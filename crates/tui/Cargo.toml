@@ -1,0 +1,11 @@
+[package]
+name = "muninn-tui"
+description = "Small ratatui building blocks for chat apps: terminal guard, input editor, chat log, diff view, picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ratatui.workspace = true
+tokio.workspace = true
+unicode-width.workspace = true

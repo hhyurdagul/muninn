@@ -1,0 +1,17 @@
+[package]
+name = "muninn-ai"
+description = "Minimal LLM provider API: chat messages, tool calls, streaming OpenAI-compatible client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
