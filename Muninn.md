@@ -91,3 +91,47 @@ CLI, MCP, and TUI, with one pinned vault, usable from any folder.
 - Running `muninn` from any folder opens a conversation in the vault.
 - Onboarding works in the TUI on Hasan's real vault and on an empty folder.
 - A TUI conversation can be closed and continued later.
+
+## Progress
+
+### 2026-10-12 04:30 — MVP ready for real-model testing
+
+**Built.** A Cargo workspace of small, independent crates plus one binary (see `README.md`):
+
+- `muninn-ai`: chat types, a `Provider` trait, and a streaming OpenAI-compatible client. A scripted mock server sits behind the `mock` feature.
+- `muninn-agent`: a generic tool-calling loop with events and cancellation. The transcript stays valid on errors and cancels.
+- `muninn-vault`: sandboxed vault access (tree, read, search, write; no hidden paths, no escaping through symlinks) and the change journal with undo and conflict detection.
+- `muninn-mcp`: a tools-only MCP server over stdio.
+- `muninn-tui`: ratatui building blocks (terminal guard, input editor, chat log, diff view, picker).
+- `muninn-core`: the librarian. Settings, saved conversations, vault tools, prompts, and the review flow. Each turn reads `AGENTS.md` fresh. Changes to an existing `AGENTS.md` always go through review.
+- `muninn`: the binary. `muninn` (TUI + onboarding), `muninn init`, `muninn ask`, `muninn mcp`, `muninn log`, `muninn undo`.
+
+**Review flow.** The model sets `review=true` when the vault rules require it.
+
+- TUI: an approve dialog showing the diff.
+- CLI: a y/N prompt on `/dev/tty`.
+- MCP: the change is stored as pending, and its diff is returned to the caller. It is written only through `apply_pending_change`, which code refuses to run until the caller has sent a later message.
+
+**Verified.**
+
+- 36 automated tests (`cargo test --workspace`, also run by `nix build`). The end-to-end tests drive the real binary against a mock model: a CLI save from another folder, log and undo, an undo conflict, the MCP review flow (nothing is written before approval), and an MCP question back that cites the notes it read.
+- Real Claude Code (`claude -p` from another folder, Muninn connected to a mock model):
+  - a save landed in `inbox/` as the rules say;
+  - Muninn asked Claude a question, Claude answered with the same `conversation_id`, and the save finished.
+- TUI driven in tmux:
+  - onboarding on an empty folder: setup steps, omp MCP registration, a conversation that created `inbox/` and `AGENTS.md`, and the approve dialog for the change to `AGENTS.md`;
+  - quit, relaunch, and continue the conversation from Ctrl+O;
+  - the CLI terminal confirmation.
+- Read-only check on HasanVault: tree, search, and the hidden-path refusal all behave correctly. Nothing was written.
+- Release binary starts in about 20 ms.
+
+**Needs Hasan (real model and key).**
+
+- Onboarding on HasanVault.
+- Answer quality and placement with a real model.
+- Registering with the real Claude Code, Codex, and omp configs.
+
+**Known limits.**
+
+- Long conversations are not trimmed to fit the model's context.
+- A TUI turn on a conversation started over MCP cannot apply that conversation's pending MCP proposals.

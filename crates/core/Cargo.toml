@@ -3,7 +3,6 @@ name = "muninn-core"
 description = "The Muninn librarian: settings, conversations, vault tools, prompts, and the review flow"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
