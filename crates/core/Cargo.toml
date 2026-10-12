@@ -1,0 +1,23 @@
+[package]
+name = "muninn-core"
+description = "The Muninn librarian: settings, conversations, vault tools, prompts, and the review flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+muninn-agent.workspace = true
+muninn-ai.workspace = true
+muninn-vault.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true

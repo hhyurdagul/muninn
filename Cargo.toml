@@ -11,6 +11,7 @@ license = "MIT"
 muninn-ai = { path = "crates/ai" }
 muninn-agent = { path = "crates/agent" }
 muninn-mcp = { path = "crates/mcp" }
+muninn-core = { path = "crates/core" }
 muninn-tui = { path = "crates/tui" }
 muninn-vault = { path = "crates/vault" }
 
