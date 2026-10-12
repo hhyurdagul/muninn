@@ -58,18 +58,25 @@ pub struct Librarian {
     provider: Arc<dyn Provider>,
     vault: Arc<Vault>,
     journal: Arc<Journal>,
+    /// Where to re-read the ignore patterns before each turn.
+    paths: Option<Paths>,
 }
 
 impl Librarian {
     pub fn new(provider: Arc<dyn Provider>, vault: Vault, journal: Journal) -> Self {
-        Self { provider, vault: Arc::new(vault), journal: Arc::new(journal) }
+        Self { provider, vault: Arc::new(vault), journal: Arc::new(journal), paths: None }
     }
 
+    /// A librarian that follows `settings`, re-reading their ignore patterns
+    /// from `paths` before every turn so edits apply without a restart.
     pub fn from_settings(settings: &Settings, paths: &Paths) -> Result<Self> {
         let vault = settings.vault.as_ref().context("no vault configured; run `muninn init`")?;
         let key = settings.api_key().context("no API key configured; run `muninn init`")?;
         let provider = OpenAiCompatible::new(&settings.base_url, &key, &settings.model);
-        Ok(Self::new(Arc::new(provider), Vault::open(vault)?, Journal::open(paths.journal_file())))
+        let vault = Vault::open(vault)?;
+        vault.set_ignore(&settings.ignore)?;
+        let librarian = Self::new(Arc::new(provider), vault, Journal::open(paths.journal_file()));
+        Ok(Self { paths: Some(paths.clone()), ..librarian })
     }
 
     pub fn vault(&self) -> &Vault {
@@ -96,6 +103,9 @@ impl Librarian {
             conversation.id,
             conversation.vault.display()
         );
+        if let Some(paths) = &self.paths {
+            self.vault.set_ignore(&Settings::load(paths)?.ignore)?;
+        }
         let system = system_prompt(&self.vault, conversation.surface, conversation.kind);
         let ctx = Arc::new(TurnContext {
             vault: self.vault.clone(),

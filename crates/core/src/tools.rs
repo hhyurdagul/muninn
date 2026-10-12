@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 
 use crate::conversation::{NoteEvent, NoteKind, Proposal};
 use crate::librarian::{Decision, Review};
+use crate::prompt::{MUNINN_RULES, SHARED_RULES};
 
 /// State shared by the tools during one turn.
 pub(crate) struct TurnContext {
@@ -73,12 +74,16 @@ impl Tool for VaultTool {
                 json!({
                     "path": { "type": "string", "description": "Vault-relative folder; empty for the root." },
                     "depth": { "type": "integer", "description": "Levels to expand (default 2)." },
+                    "hidden": {
+                        "type": "boolean",
+                        "description": "Also show hidden files and folders, whose names start with a dot (.obsidian, .agents). Default false."
+                    },
                 }),
                 &[],
             ),
             Kind::Read => spec(
                 "read_note",
-                "Read a note. Long notes are returned in windows of lines.",
+                "Read a note, or a hidden file such as .obsidian/daily-notes.json. Long files are returned in windows of lines.",
                 json!({
                     "path": { "type": "string", "description": "Vault-relative path." },
                     "offset": { "type": "integer", "description": "First line to return (1-based)." },
@@ -92,7 +97,7 @@ impl Tool for VaultTool {
                 json!({
                     "query": { "type": "string" },
                     "regex": { "type": "boolean", "description": "Treat query as a regular expression." },
-                    "path": { "type": "string", "description": "Limit to this folder." },
+                    "path": { "type": "string", "description": "Limit to this folder. Hidden folders are only searched when named here." },
                     "max_results": { "type": "integer", "description": "Default 50." },
                 }),
                 &["query"],
@@ -146,7 +151,8 @@ impl Tool for VaultTool {
         match self.kind {
             Kind::List => {
                 let depth = opt_u64(&args, "depth").unwrap_or(2).clamp(1, 6) as usize;
-                let tree = ctx.vault.tree(opt_str(&args, "path").unwrap_or(""), depth, 400)?;
+                let hidden = args.get("hidden").and_then(Value::as_bool).unwrap_or(false);
+                let tree = ctx.vault.tree(opt_str(&args, "path").unwrap_or(""), depth, 400, hidden)?;
                 Ok(if tree.is_empty() { "(empty)".into() } else { tree })
             }
             Kind::Read => {
@@ -217,8 +223,9 @@ impl Tool for VaultTool {
 }
 
 impl VaultTool {
-    /// Writes directly, or routes the change through review when asked to
-    /// or when it touches an existing AGENTS.md (never edited unasked).
+    /// Writes directly, or routes the change through review when asked to or
+    /// when it touches an existing rules file (never edited unasked): any
+    /// AGENTS.md, or the MUNINN.md at the root (a `projects/muninn.md` is a note).
     async fn save(&self, path: &str, after: String, summary: &str, review: bool) -> Result<String> {
         let ctx = &self.ctx;
         let path = ctx.vault.relative(&ctx.vault.resolve(path)?);
@@ -226,7 +233,9 @@ impl VaultTool {
         if before.as_deref() == Some(after.as_str()) {
             return Ok(format!("{path} already has this content; nothing changed."));
         }
-        let is_rules = before.is_some() && path.rsplit('/').next().is_some_and(|n| n.eq_ignore_ascii_case("AGENTS.md"));
+        let name = path.rsplit('/').next().unwrap_or_default();
+        let is_rules =
+            before.is_some() && (name.eq_ignore_ascii_case(SHARED_RULES) || path.eq_ignore_ascii_case(MUNINN_RULES));
         if !review && !is_rules {
             return ctx.write(&path, after, summary);
         }
@@ -320,6 +329,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("vault")).unwrap();
         std::fs::write(dir.path().join("vault/AGENTS.md"), "rules\n").unwrap();
+        std::fs::write(dir.path().join("vault/MUNINN.md"), "rules\n").unwrap();
         std::fs::write(dir.path().join("vault/a.md"), "one\ntwo\ntwo\n").unwrap();
         let ctx = TurnContext {
             vault: Arc::new(Vault::open(dir.path().join("vault")).unwrap()),
@@ -379,14 +389,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn existing_agents_md_is_never_written_without_review() {
+    async fn existing_rules_files_are_never_written_without_review() {
         let (_d, ctx) = ctx(Review::Deferred, 1);
-        let out = tool(&ctx, "write_note")
-            .call(json!({"path":"AGENTS.md","content":"new rules","summary":"s"}))
-            .await
-            .unwrap();
-        assert!(out.contains("pending"));
-        assert_eq!(ctx.vault.read("AGENTS.md").unwrap().as_deref(), Some("rules\n"));
+        for file in ["AGENTS.md", "MUNINN.md"] {
+            let out = tool(&ctx, "write_note")
+                .call(json!({"path": file, "content": "new rules", "summary": "s"}))
+                .await
+                .unwrap();
+            assert!(out.contains("pending"), "{file}");
+            assert_eq!(ctx.vault.read(file).unwrap().as_deref(), Some("rules\n"), "{file}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_note_named_like_muninn_md_outside_the_root_is_just_a_note() {
+        let (_d, ctx) = ctx(Review::Deferred, 1);
+        let write = tool(&ctx, "write_note");
+        for content in ["v1", "v2"] {
+            write.call(json!({"path": "projects/muninn.md", "content": content, "summary": "s"})).await.unwrap();
+        }
+        assert_eq!(ctx.vault.read("projects/muninn.md").unwrap().as_deref(), Some("v2"));
     }
 
     #[test]

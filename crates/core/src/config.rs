@@ -41,8 +41,9 @@ impl Paths {
     }
 }
 
-/// Muninn's own settings: the vault path, the model, and credentials.
-/// Everything else (rules, structure) lives in the vault.
+/// Muninn's own settings: the vault path, the model, credentials, and which
+/// vault paths Muninn may never touch. Everything else (rules, structure)
+/// lives in the vault.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -51,11 +52,20 @@ pub struct Settings {
     pub model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Gitignore-style patterns, relative to the vault root, for paths Muninn
+    /// can neither see nor touch. Re-read on every turn.
+    pub ignore: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { vault: None, base_url: DEFAULT_BASE_URL.into(), model: DEFAULT_MODEL.into(), api_key: None }
+        Self {
+            vault: None,
+            base_url: DEFAULT_BASE_URL.into(),
+            model: DEFAULT_MODEL.into(),
+            api_key: None,
+            ignore: vec![".git/".into()],
+        }
     }
 }
 

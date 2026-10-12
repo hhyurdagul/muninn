@@ -2,15 +2,14 @@ use muninn_vault::Vault;
 
 use crate::conversation::{Kind, Surface};
 
+/// Rules for every agent that works in the vault.
+pub(crate) const SHARED_RULES: &str = "AGENTS.md";
+/// Rules only for Muninn; they win over [`SHARED_RULES`].
+pub(crate) const MUNINN_RULES: &str = "MUNINN.md";
+
 /// Builds the system prompt fresh for every turn so rule edits apply at once.
 pub(crate) fn system_prompt(vault: &Vault, surface: Surface, kind: Kind) -> String {
-    let rules = match vault.read("AGENTS.md") {
-        Ok(Some(text)) if !text.trim().is_empty() => text,
-        _ => "(No AGENTS.md: the vault has no written rules yet. Infer conventions from existing notes and \
-              never impose a new structure.)"
-            .into(),
-    };
-    let layout = vault.tree("", 2, 150).unwrap_or_default();
+    let layout = vault.tree("", 2, 150, false).unwrap_or_default();
     let layout = if layout.is_empty() { "(empty vault)".to_string() } else { layout };
     let mut prompt = format!(
         "You are Muninn, the librarian of the user's knowledge vault. Wherever the user or their agents are \
@@ -32,13 +31,22 @@ vault-relative path, like `projects/muninn.md`. If the vault does not contain th
 - If you need information to act correctly (an ambiguous target, missing context), ask a short question \
 and end your turn instead of guessing.
 - Review: if the vault rules say changes must be reviewed before they land, pass review=true on every write; \
-otherwise writes land directly. Changes to an existing AGENTS.md always go through review.
+otherwise writes land directly. Changes to an existing AGENTS.md or MUNINN.md always go through review.
+- Rules: AGENTS.md holds the rules every agent in this vault follows. MUNINN.md, when it exists, holds rules \
+only for you, and it wins where the two disagree. When the user gives you a new rule, put rules for every \
+agent in AGENTS.md and rules only for you in MUNINN.md. If there is no MUNINN.md yet and a rule is only \
+about you, ask whether to start one for it or keep the rule in AGENTS.md.
+- Hidden files and folders (names starting with a dot, like .obsidian or .agents) are left out of listings \
+and searches. list_notes with hidden=true shows them, search_notes looks inside one when you pass it as \
+the path, and read_note reads them. Read them when the rules point to them or they hold settings you need \
+(e.g. .obsidian/daily-notes.json). You cannot change them. Paths the user excluded in Muninn's settings do \
+not exist for you.
 - Be concise.
 
 # Where you are
 {surface}
 
-# Vault rules (AGENTS.md)
+# Vault rules
 {rules}
 
 # Vault layout
@@ -47,11 +55,34 @@ otherwise writes land directly. Changes to an existing AGENTS.md always go throu
         root = vault.root().display(),
         today = chrono::Local::now().format("%Y-%m-%d (%A)"),
         surface = surface_text(surface),
+        rules = rules(vault),
     );
     if kind == Kind::Onboarding {
         prompt.push_str(ONBOARDING);
     }
     prompt
+}
+
+/// The vault's rule files for the prompt: AGENTS.md, then MUNINN.md, which wins.
+fn rules(vault: &Vault) -> String {
+    let read = |name| vault.read(name).ok().flatten().filter(|text| !text.trim().is_empty());
+    let (shared, own) = (read(SHARED_RULES), read(MUNINN_RULES));
+    if shared.is_none() && own.is_none() {
+        return "(No AGENTS.md or MUNINN.md: the vault has no written rules yet. Infer conventions from \
+                existing notes and never impose a new structure.)"
+            .into();
+    }
+    let mut out = format!(
+        "## AGENTS.md (shared with every agent in the vault)\n{}\n",
+        shared.as_deref().unwrap_or("(none)").trim_end()
+    );
+    if let Some(own) = own {
+        out.push_str(&format!(
+            "\n## MUNINN.md (only for you; wins where it disagrees with AGENTS.md)\n{}\n",
+            own.trim_end()
+        ));
+    }
+    out
 }
 
 fn surface_text(surface: Surface) -> &'static str {
@@ -79,15 +110,21 @@ user the diff; the tool returns once they approve or reject it."
 const ONBOARDING: &str = "
 # Onboarding
 This conversation onboards Muninn to the vault. The vault path and model are already set up. Work through:
-1. Look at the vault: AGENTS.md, folder layout, frontmatter, link style ([[wikilinks]] or markdown links), \
-and languages. Read a few representative notes.
+1. Look at the vault: AGENTS.md and MUNINN.md, folder layout, frontmatter, link style ([[wikilinks]] or \
+markdown links), and languages. Read a few representative notes. Check hidden folders with \
+list_notes hidden=true for settings and instructions that matter (e.g. .obsidian/daily-notes.json, .agents/).
 2. Empty vault: propose the minimal shape, an `inbox/` folder and an `AGENTS.md`, and create them once the \
 user agrees. Do not add other folders; structure grows later, and you suggest a folder when a pattern appears.
 3. Vault with content: tell the user briefly what you understood and ask them to correct you.
-   - AGENTS.md exists: use it as it is. You may suggest changes, but never edit it without asking.
+   - AGENTS.md or MUNINN.md exists: use it as it is. You may suggest changes, but never edit it without asking.
    - No AGENTS.md: work one out together that describes the vault's existing conventions, then write it. \
 Never impose a new structure.
-4. Ask whether saves should land directly or be reviewed first, and record the answer in AGENTS.md.
+4. Unless MUNINN.md already exists, ask whether Muninn needs rules of its own apart from AGENTS.md, which \
+other agents working in the vault read too. Separate rules make sense when those agents should not follow \
+librarian rules, or Muninn should not follow theirs. If the user wants them, keep Muninn-only rules in \
+MUNINN.md; it wins where it disagrees with AGENTS.md. Otherwise everything stays in AGENTS.md.
+5. Ask whether saves should land directly or be reviewed first, and record the answer in MUNINN.md if it \
+exists, otherwise in AGENTS.md.
 Keep messages short and ask one or two questions at a time. When everything is settled, say that onboarding \
 is done and that the user can now save to and ask the vault from anywhere.
 ";

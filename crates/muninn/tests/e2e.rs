@@ -122,6 +122,54 @@ async fn undo_reports_conflict_when_the_note_was_edited() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn muninn_rules_hidden_files_and_ignore_settings() {
+    let server = MockServer::scripted(vec![
+        call("list_notes", json!({"hidden": true, "depth": 3})),
+        call("read_note", json!({"path": ".agents/skills/sync/SKILL.md"})),
+        call("read_note", json!({"path": "private/diary.md"})),
+        call("write_note", json!({"path": ".agents/new.md", "content": "x", "summary": "s"})),
+        Message::assistant("Done."),
+    ])
+    .await
+    .unwrap();
+    let env = Env::new(&server.url);
+    for (path, text) in [
+        ("MUNINN.md", "- Muninn saves ideas to `inbox/`.\n"),
+        (".agents/skills/sync/SKILL.md", "Sync weekly.\n"),
+        (".git/config", "token\n"),
+        ("private/diary.md", "secret\n"),
+    ] {
+        fs::create_dir_all(env.vault(path).parent().unwrap()).unwrap();
+        fs::write(env.vault(path), text).unwrap();
+    }
+    let config = env.dir.path().join("config/config.toml");
+    let settings = fs::read_to_string(&config).unwrap() + "ignore = [\".git/\", \"private/\"]\n";
+    fs::write(&config, settings).unwrap();
+
+    let (code, _, stderr) = env.run(&["ask", "look around"]).await;
+    assert_eq!(code, 0, "{stderr}");
+    let requests = server.requests();
+    let system = requests[0]["messages"][0]["content"].as_str().unwrap();
+    assert!(system.contains("Save ideas to `ideas/`") && system.contains("Muninn saves ideas to `inbox/`"));
+    assert!(
+        system.find("Save ideas to").unwrap() < system.find("Muninn saves ideas").unwrap(),
+        "MUNINN.md comes after AGENTS.md"
+    );
+    let results: Vec<String> = requests[4]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["role"] == "tool")
+        .map(|m| m["content"].as_str().unwrap().to_string())
+        .collect();
+    assert!(results[0].contains(".agents/") && !results[0].contains(".git") && !results[0].contains("private"));
+    assert_eq!(results[1], "Sync weekly.\n", "hidden files are readable");
+    assert!(results[2].contains("excluded by Muninn's ignore settings"), "{}", results[2]);
+    assert!(results[3].contains("read-only"), "{}", results[3]);
+    assert!(!env.vault(".agents/new.md").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn cli_reports_missing_setup() {
     let env = Env::new("http://127.0.0.1:9/v1");
     fs::remove_file(env.dir.path().join("config/config.toml")).unwrap();

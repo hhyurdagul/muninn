@@ -14,15 +14,31 @@ muninn undo [change-id]     # revert the latest (or a given) change
 muninn mcp                  # MCP server over stdio, started by your agent
 ```
 
-Onboarding asks for the vault folder and an OpenAI-compatible endpoint, model, and API key (OpenRouter by default), makes one test call, offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules (`AGENTS.md`) in conversation.
+Onboarding asks for the vault folder and an OpenAI-compatible endpoint, model, and API key (OpenRouter by default), makes one test call, offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules in conversation. That includes whether Muninn should get rules of its own.
 
 | Where | Path |
 |---|---|
-| Settings (vault, endpoint, model, key) | `~/.config/muninn/config.toml` (`MUNINN_CONFIG_DIR`) |
+| Settings (vault, endpoint, model, key, ignore patterns) | `~/.config/muninn/config.toml` (`MUNINN_CONFIG_DIR`) |
 | Conversations, change log | `~/.local/share/muninn/` (`MUNINN_DATA_DIR`) |
 | API key override | `MUNINN_API_KEY` |
 
-Muninn reads, searches, and writes notes inside the vault only, never hidden folders and never outside the root. It has no shell. When the vault's rules require review, changes are shown first: in the TUI as an approve dialog, in `muninn ask` as a terminal prompt, and over MCP as a pending diff that the calling agent approves by replying in the same conversation (`conversation_id`).
+Muninn reads, searches, and writes notes inside the vault only, never outside the root. It has no shell. When the vault's rules require review, changes are shown first: in the TUI as an approve dialog, in `muninn ask` as a terminal prompt, and over MCP as a pending diff that the calling agent approves by replying in the same conversation (`conversation_id`).
+
+### Vault rules
+
+`AGENTS.md` at the vault root holds the rules every agent in the vault follows. If Muninn needs rules that other agents shouldn't follow (or the other way round), put those in `MUNINN.md` at the root. Muninn follows both, and `MUNINN.md` wins where they disagree. Onboarding asks whether you want the split. Muninn changes an existing `AGENTS.md` or root `MUNINN.md` only after review.
+
+### Hidden files and ignore patterns
+
+Hidden files and folders (`.obsidian`, `.agents`, …) are read-only for Muninn. They are left out of its listings and searches unless it asks for them (`list_notes` with `hidden=true`, or a search inside a named hidden folder), but it can read them by path. Muninn never writes them.
+
+`ignore` in `config.toml` takes gitignore-style patterns, relative to the vault root, for paths Muninn can't list, search, read, or write. Muninn re-reads them before every turn, so edits apply without a restart:
+
+```toml
+ignore = [".git/", ".stversions/", "private/", "*.key", "!private/shared.md"]
+```
+
+The default is `[".git/"]`.
 
 ### In the TUI
 
