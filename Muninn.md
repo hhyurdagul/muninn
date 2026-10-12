@@ -135,3 +135,18 @@ CLI, MCP, and TUI, with one pinned vault, usable from any folder.
 
 - Long conversations are not trimmed to fit the model's context.
 - A TUI turn on a conversation started over MCP cannot apply that conversation's pending MCP proposals.
+
+### 2026-10-12 15:10 — TUI: slash commands, editing keys, Markdown, new look
+
+**Built.**
+
+- Slash commands with a completion list above the input (↑↓, Tab, Enter): `/help`, `/new`, `/resume`, `/log`, `/undo [id]`, `/init`, `/quit` (`/exit`). Unknown `/word` commands are refused; input like `/home/me/notes …` is still sent as a message. `/log` and `/undo` share their logic with `muninn log` and `muninn undo` (`cli::changes`, `cli::describe_undo`).
+- Input keys: Ctrl/Shift/Alt+Enter and Ctrl+J for a new line; Ctrl/Alt+←→ and Alt+B/F by word; Ctrl/Alt+Backspace, Ctrl+W, Ctrl+H, Ctrl/Alt+Delete, and Alt+D delete words; Ctrl+U/K delete to the line's start or end; Ctrl+Home/End jump to the text's ends; Cmd+←→↑↓ and Cmd+Backspace for macOS. The terminal guard turns on the kitty keyboard protocol when the terminal supports it, so Ctrl+Enter and Cmd reach the app.
+- `muninn_tui::markdown`: headings, emphasis, strikethrough, inline code, links (with their URL), `[[wikilinks]]`, images (alt text), nested ordered, bullet, and task lists, quotes and GitHub alerts, code blocks in a box, tables with alignment that shrink and wrap their cells to fit, rules, footnotes, `<br>`, HTML (dimmed), and math (as source). Muninn's replies render through it.
+- New look: a header with the vault and model, `❯`/`●` gutters for you and Muninn, rounded and colored borders, a placeholder in the input, key hints that drop off on narrow terminals, and restyled notes panel, approval dialog, conversation picker, and setup screen.
+
+**Verified.** `cargo test --workspace` and clippy are clean, with new tests for Markdown rendering, styled wrapping, word and line editing, and command parsing. The TUI was driven in tmux against the mock model: a reply with a table, lists, an alert, and a code block; the command list; `/log`, `/undo`, `/help`, `/new`, `/exit`; an unknown command; word and line editing; Ctrl+O; and the approval dialog. Checked at 120 and 80 columns.
+
+**Needs Hasan.** Try Ctrl+Enter and the Cmd keys in his own terminal; tmux cannot send them.
+
+**Known limits.** Code blocks have no syntax highlighting. Math is shown as TeX source. The transcript keeps each message's rendered lines and only re-renders a message when it or the width changes (about 6 ms per 100 KB of Markdown in a release build).

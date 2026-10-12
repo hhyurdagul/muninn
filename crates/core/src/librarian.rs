@@ -76,6 +76,10 @@ impl Librarian {
         &self.vault
     }
 
+    pub fn journal(&self) -> &Journal {
+        &self.journal
+    }
+
     /// Runs one message through the librarian. The conversation is updated
     /// even when the turn fails or is cancelled, so it can be saved as is.
     pub async fn turn(

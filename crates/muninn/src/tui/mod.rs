@@ -1,6 +1,7 @@
 //! The terminal app: onboarding, then a conversation in the vault.
 
 mod chat;
+mod commands;
 mod setup;
 
 use std::path::Path;
@@ -69,11 +70,13 @@ pub async fn run(start: Start) -> Result<()> {
                             screen = Screen::Chat(Box::new(Chat::new(&paths, &settings, true, tx.clone())?));
                         }
                     },
-                    Screen::Chat(chat) => {
-                        if chat.handle(event) {
-                            break;
+                    Screen::Chat(chat) => match chat.handle(event) {
+                        chat::Action::None => {}
+                        chat::Action::Quit => break,
+                        chat::Action::Setup => {
+                            screen = Screen::Setup(Box::new(Setup::new(paths.clone(), Settings::load(&paths)?)));
                         }
-                    }
+                    },
                 }
             }
             Some(event) = rx.recv() => match &mut screen {

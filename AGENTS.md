@@ -53,9 +53,9 @@ graph LR
 | `muninn-agent` | `lib.rs` (`Agent`, `Tool`, `Event`, `Stop`) | tool-calling loop, cancellation, valid transcripts | vaults, UI |
 | `muninn-vault` | `lib.rs` (`Vault`), `journal.rs` (`Journal`, `Undo`, `unified_diff`) | sandboxed file access, change log, undo | AI, UI |
 | `muninn-mcp` | `lib.rs` (`Handler`, `serve`, `serve_stdio`) | MCP JSON-RPC (tools only) | Muninn |
-| `muninn-tui` | `input.rs`, `chat_log.rs`, `diff.rs`, `picker.rs`, `terminal.rs`, `wrap.rs` | generic ratatui widgets | Muninn |
+| `muninn-tui` | `input.rs`, `chat_log.rs`, `markdown.rs` (pulldown-cmark → styled lines), `diff.rs`, `picker.rs`, `terminal.rs`, `wrap.rs` | generic ratatui widgets | Muninn |
 | `muninn-core` | `config.rs` (`Settings`, `Paths`), `conversation.rs` (`Conversation`, `Store`, `Proposal`, `NoteEvent`), `tools.rs` (vault tools), `prompt.rs`, `librarian.rs` (`Librarian::turn`, `Review`, `Reviewer`, `Update`) | the librarian, independent of any UI | terminals, MCP |
-| `muninn` | `main.rs` (clap), `cli.rs`, `mcp.rs`, `integrations.rs`, `tui/{mod,chat,setup}.rs` | surfaces and onboarding | — |
+| `muninn` | `main.rs` (clap), `cli.rs`, `mcp.rs`, `integrations.rs`, `tui/{mod,chat,commands,setup}.rs` | surfaces and onboarding | — |
 
 ### One turn
 
@@ -103,6 +103,7 @@ graph LR
 - **New coding-agent integration:** add an `Agent` variant in `muninn/src/integrations.rs` (`name`, `binary`, `config`, `is_installed`, and its arm in `install`). Prefer the agent's own CLI (`<agent> mcp add`) over editing its config files.
 - **Prompt behavior:** edit `core/src/prompt.rs`. Surface-specific instructions go in `surface_text`, and the onboarding flow in `ONBOARDING`.
 - **TUI:** generic widgets belong in `muninn-tui`. Screens and state belong in `muninn/src/tui/`. Background work reports back to the UI loop through `AppEvent` on the `Tx` channel.
+- **Slash command:** add an `Action` variant and a `COMMANDS` entry in `muninn/src/tui/commands.rs`, then its arm in `Chat::run` (`tui/chat.rs`). The `/help` table and the completion list come from `COMMANDS`. Commands that touch the conversation or the vault must refuse while a turn runs.
 
 ## Backlog / known gaps
 
@@ -112,6 +113,5 @@ graph LR
   - registering with the real Claude Code, Codex, and omp configs.
 - Long conversations are never trimmed or summarized to fit the context window.
 - A TUI turn on a conversation started over MCP has no `apply_pending_change` (the review mode is interactive), so pending MCP proposals stay stuck there.
-- The TUI shows plain text; Markdown is not rendered.
 - The CLI cannot confirm changes without a terminal (`/dev/tty`). In that case changes needing review are rejected.
 - Later items from the spec: structure presets, imports from other tools, and a calibration run before going live.

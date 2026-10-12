@@ -10,7 +10,7 @@ use muninn_core::{
     CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal, Review, Reviewer, Settings,
     Stop, Surface, Update,
 };
-use muninn_vault::{Journal, Undo, Vault};
+use muninn_vault::{Entry, Journal, Undo, Vault};
 
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
@@ -114,27 +114,51 @@ fn open_vault() -> Result<(Vault, Journal)> {
 
 pub fn undo(id: Option<&str>) -> Result<i32> {
     let (vault, journal) = open_vault()?;
-    match journal.undo(&vault, id)? {
-        Undo::Reverted { original, .. } => {
-            println!("Reverted {} [{}] {}", original.path, original.id, original.summary);
+    let undo = journal.undo(&vault, id)?;
+    match undo {
+        Undo::Reverted { .. } => {
+            println!("{}", describe_undo(&undo));
             Ok(0)
         }
-        Undo::Conflict { original } => {
-            eprintln!("Conflict: {} was edited after change {}; nothing was reverted.", original.path, original.id);
+        Undo::Conflict { .. } => {
+            eprintln!("{}", describe_undo(&undo));
             Ok(2)
         }
     }
 }
 
-pub fn log(limit: usize) -> Result<i32> {
-    let (vault, journal) = open_vault()?;
+/// What an undo did, in one line.
+pub(crate) fn describe_undo(undo: &Undo) -> String {
+    match undo {
+        Undo::Reverted { original, .. } => format!("Reverted {} [{}] {}", original.path, original.id, original.summary),
+        Undo::Conflict { original } => {
+            format!("Conflict: {} was edited after change {}; nothing was reverted.", original.path, original.id)
+        }
+    }
+}
+
+/// Changes Muninn made to `vault`, newest first, each with whether it was undone.
+pub(crate) fn changes(vault: &Vault, journal: &Journal) -> Result<Vec<(Entry, bool)>> {
     let entries: Vec<_> = journal.entries()?.into_iter().filter(|e| e.vault == vault.root()).collect();
     let reverted: HashSet<String> = entries.iter().filter_map(|e| e.reverts.clone()).collect();
-    if entries.is_empty() {
+    Ok(entries
+        .into_iter()
+        .rev()
+        .map(|e| {
+            let undone = reverted.contains(&e.id);
+            (e, undone)
+        })
+        .collect())
+}
+
+pub fn log(limit: usize) -> Result<i32> {
+    let (vault, journal) = open_vault()?;
+    let changes = changes(&vault, &journal)?;
+    if changes.is_empty() {
         println!("No changes yet.");
     }
-    for entry in entries.iter().rev().take(limit) {
-        let mark = if reverted.contains(&entry.id) { " (undone)" } else { "" };
+    for (entry, undone) in changes.iter().take(limit) {
+        let mark = if *undone { " (undone)" } else { "" };
         println!("{}  {}  {}  {}{mark}", entry.id, entry.time.format("%Y-%m-%d %H:%M"), entry.path, entry.summary);
     }
     Ok(0)

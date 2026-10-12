@@ -4,8 +4,14 @@ use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 use unicode_width::UnicodeWidthChar;
 
-/// A multi-line text field. The owner decides what Enter means; Alt+Enter,
-/// Shift+Enter and Ctrl+J insert a newline.
+/// A multi-line text field. The owner decides what plain Enter means;
+/// Ctrl/Shift/Alt+Enter and Ctrl+J insert a newline.
+///
+/// Movement: Ctrl/Alt+←→ (or Alt+B/F) by word, Home/End or Ctrl+A/E (or
+/// Cmd+←→) to the line's ends, Ctrl+Home/End (or Cmd+↑↓) to the text's ends.
+/// Deletion: Ctrl/Alt+Backspace, Ctrl+W or Ctrl+H the word before the cursor,
+/// Ctrl/Alt+Delete or Alt+D the word after it, Ctrl+U (or Cmd+Backspace) to
+/// the line's start, Ctrl+K to its end.
 #[derive(Default)]
 pub struct Input {
     text: String,
@@ -36,6 +42,12 @@ impl Input {
         std::mem::take(&mut self.text)
     }
 
+    /// Replaces the text and puts the cursor at its end.
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.text = text.into();
+        self.cursor = self.text.len();
+    }
+
     pub fn insert_str(&mut self, s: &str) {
         let s = s.replace("\r\n", "\n").replace('\r', "\n");
         self.text.insert_str(self.cursor, &s);
@@ -47,36 +59,36 @@ impl Input {
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let cmd = key.modifiers.contains(KeyModifiers::SUPER);
+        let word = ctrl || alt;
         match key.code {
-            KeyCode::Enter if alt || key.modifiers.contains(KeyModifiers::SHIFT) => self.insert_str("\n"),
+            KeyCode::Enter if !key.modifiers.is_empty() => self.insert_str("\n"),
             KeyCode::Char('j') if ctrl => self.insert_str("\n"),
             KeyCode::Char('a') if ctrl => self.cursor = self.line_start(),
             KeyCode::Char('e') if ctrl => self.cursor = self.line_end(),
-            KeyCode::Char('u') if ctrl => {
-                let start = self.line_start();
-                self.text.drain(start..self.cursor);
-                self.cursor = start;
-            }
-            KeyCode::Char('w') if ctrl => {
-                let before = &self.text[..self.cursor];
-                let start = before.trim_end().rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                self.text.drain(start..self.cursor);
-                self.cursor = start;
-            }
-            KeyCode::Char(c) if !ctrl && !alt => self.insert_str(c.encode_utf8(&mut [0; 4])),
-            KeyCode::Backspace => {
-                if let Some(prev) = self.prev_boundary() {
-                    self.text.drain(prev..self.cursor);
-                    self.cursor = prev;
-                }
-            }
-            KeyCode::Delete => {
-                if let Some(next) = self.next_boundary() {
-                    self.text.drain(self.cursor..next);
-                }
-            }
+            KeyCode::Char('b') if alt => self.cursor = self.word_start(),
+            KeyCode::Char('f') if alt => self.cursor = self.word_end(),
+            KeyCode::Char('u') if ctrl => self.delete_to(self.line_start()),
+            KeyCode::Char('k') if ctrl => self.delete_to(self.line_end()),
+            KeyCode::Char('w' | 'h') if ctrl => self.delete_to(self.word_start()),
+            KeyCode::Char('d') if alt => self.delete_to(self.word_end()),
+            KeyCode::Char(c) if !ctrl && !alt && !cmd => self.insert_str(c.encode_utf8(&mut [0; 4])),
+            KeyCode::Backspace if cmd => self.delete_to(self.line_start()),
+            KeyCode::Backspace if word => self.delete_to(self.word_start()),
+            KeyCode::Backspace => self.delete_to(self.prev_boundary().unwrap_or(0)),
+            KeyCode::Delete if cmd => self.delete_to(self.line_end()),
+            KeyCode::Delete if word => self.delete_to(self.word_end()),
+            KeyCode::Delete => self.delete_to(self.next_boundary().unwrap_or(self.text.len())),
+            KeyCode::Left if cmd => self.cursor = self.line_start(),
+            KeyCode::Right if cmd => self.cursor = self.line_end(),
+            KeyCode::Left if word => self.cursor = self.word_start(),
+            KeyCode::Right if word => self.cursor = self.word_end(),
             KeyCode::Left => self.cursor = self.prev_boundary().unwrap_or(0),
             KeyCode::Right => self.cursor = self.next_boundary().unwrap_or(self.text.len()),
+            KeyCode::Home if ctrl => self.cursor = 0,
+            KeyCode::End if ctrl => self.cursor = self.text.len(),
+            KeyCode::Up if cmd => self.cursor = 0,
+            KeyCode::Down if cmd => self.cursor = self.text.len(),
             KeyCode::Home => self.cursor = self.line_start(),
             KeyCode::End => self.cursor = self.line_end(),
             KeyCode::Up => return self.move_vertically(false),
@@ -84,6 +96,41 @@ impl Input {
             _ => return false,
         }
         true
+    }
+
+    /// Deletes between the cursor and `target`, in either direction.
+    fn delete_to(&mut self, target: usize) {
+        let (start, end) = (self.cursor.min(target), self.cursor.max(target));
+        self.text.drain(start..end);
+        self.cursor = start;
+    }
+
+    /// Start of the word before the cursor, skipping punctuation and spaces.
+    fn word_start(&self) -> usize {
+        let mut start = self.cursor;
+        let mut in_word = false;
+        for (i, c) in self.text[..self.cursor].char_indices().rev() {
+            if is_word_char(c) {
+                in_word = true;
+            } else if in_word {
+                break;
+            }
+            start = i;
+        }
+        start
+    }
+
+    /// End of the word after the cursor, skipping punctuation and spaces.
+    fn word_end(&self) -> usize {
+        let mut in_word = false;
+        for (i, c) in self.text[self.cursor..].char_indices() {
+            if is_word_char(c) {
+                in_word = true;
+            } else if in_word {
+                return self.cursor + i;
+            }
+        }
+        self.text.len()
     }
 
     fn prev_boundary(&self) -> Option<usize> {
@@ -175,6 +222,10 @@ impl Input {
     }
 }
 
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +261,30 @@ mod tests {
         type_str(&mut input, "!");
         assert_eq!(input.text(), "a!bc\nx");
         assert!(!input.handle_key(key(KeyCode::Up)));
+    }
+
+    #[test]
+    fn word_and_line_shortcuts() {
+        let with = |code, modifiers| KeyEvent::new(code, modifiers);
+        let mut input = Input::with_text("save notes/ravens.md now");
+        input.handle_key(with(KeyCode::Left, KeyModifiers::CONTROL));
+        input.handle_key(with(KeyCode::Left, KeyModifiers::ALT));
+        type_str(&mut input, "x");
+        assert_eq!(input.text(), "save notes/ravens.xmd now", "words stop at punctuation");
+        input.handle_key(with(KeyCode::Backspace, KeyModifiers::CONTROL));
+        assert_eq!(input.text(), "save notes/ravens.md now");
+        input.handle_key(with(KeyCode::Delete, KeyModifiers::CONTROL));
+        assert_eq!(input.text(), "save notes/ravens. now");
+        input.handle_key(with(KeyCode::Char('k'), KeyModifiers::CONTROL));
+        assert_eq!(input.text(), "save notes/ravens.");
+        input.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL));
+        type_str(&mut input, "two");
+        input.handle_key(with(KeyCode::Left, KeyModifiers::SUPER));
+        input.handle_key(with(KeyCode::Backspace, KeyModifiers::SUPER));
+        assert_eq!(input.text(), "save notes/ravens.\ntwo", "Cmd+Backspace stops at the line start");
+        input.handle_key(with(KeyCode::Home, KeyModifiers::CONTROL));
+        input.handle_key(with(KeyCode::Char('d'), KeyModifiers::ALT));
+        assert_eq!(input.text(), " notes/ravens.\ntwo");
     }
 
     #[test]

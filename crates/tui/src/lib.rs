@@ -3,6 +3,7 @@
 mod chat_log;
 mod diff;
 mod input;
+mod markdown;
 mod picker;
 mod terminal;
 mod wrap;
@@ -10,10 +11,11 @@ mod wrap;
 pub use chat_log::{ChatLog, Item};
 pub use diff::diff_lines;
 pub use input::Input;
+pub use markdown::markdown;
 pub use picker::Picker;
 pub use ratatui;
 pub use terminal::{spawn_event_reader, Terminal};
-pub use wrap::wrap;
+pub use wrap::wrap_line;
 
 use ratatui::layout::Rect;
 

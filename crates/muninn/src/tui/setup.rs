@@ -7,8 +7,8 @@ use muninn_core::{check_model, Paths, Settings};
 use muninn_tui::ratatui::crossterm::event::{Event, KeyCode};
 use muninn_tui::ratatui::layout::{Constraint, Layout};
 use muninn_tui::ratatui::style::{Color, Modifier, Style};
-use muninn_tui::ratatui::text::Line;
-use muninn_tui::ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use muninn_tui::ratatui::text::{Line, Span};
+use muninn_tui::ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use muninn_tui::ratatui::Frame;
 use muninn_tui::{centered, Input, Picker};
 
@@ -214,14 +214,27 @@ impl Setup {
             Step::Model => (2, "Connect a model"),
             Step::Agents => (3, "Reach the vault from your coding agents"),
         };
+        let accent = Style::default().fg(Color::Magenta);
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(format!(" Muninn setup · {number}/3 · {title} "))
-            .title_bottom(match self.step {
-                Step::Vault => " Enter continue · Ctrl+C quit ",
-                Step::Model => " Tab next field · Enter test & continue · Esc back ",
-                Step::Agents => " Space toggle · Enter continue · Esc back ",
-            });
+            .border_type(BorderType::Rounded)
+            .border_style(accent)
+            .padding(muninn_tui::ratatui::widgets::Padding::horizontal(1))
+            .title(Line::from(vec![
+                Span::styled(
+                    " Muninn setup ",
+                    Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!(" {number}/3 · {title} "), Style::default().add_modifier(Modifier::BOLD)),
+            ]))
+            .title_bottom(Span::styled(
+                match self.step {
+                    Step::Vault => " Enter continue · Ctrl+C quit ",
+                    Step::Model => " Tab next field · Enter test & continue · Esc back ",
+                    Step::Agents => " Space toggle · Enter continue · Esc back ",
+                },
+                Style::default().fg(Color::DarkGray),
+            ));
         let inner = block.inner(area);
         frame.render_widget(block, area);
         let [intro, body, message] =
@@ -283,9 +296,12 @@ fn field_area(body: muninn_tui::ratatui::layout::Rect, index: usize) -> muninn_t
 }
 
 fn field_block(label: &str, focused: bool) -> Block<'static> {
-    let style =
-        if focused { Style::default().add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::DarkGray) };
-    Block::default().borders(Borders::ALL).border_style(style).title(Line::from(format!(" {label} ")))
+    let style = if focused { Style::default().fg(Color::Magenta) } else { Style::default().fg(Color::DarkGray) };
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(style)
+        .title(Span::styled(format!(" {label} "), style.add_modifier(Modifier::BOLD)))
 }
 
 /// Expands `~` and makes the path absolute.

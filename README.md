@@ -24,6 +24,22 @@ Onboarding asks for the vault folder and an OpenAI-compatible endpoint, model, a
 
 Muninn reads, searches, and writes notes inside the vault only, never hidden folders and never outside the root. It has no shell. When the vault's rules require review, changes are shown first: in the TUI as an approve dialog, in `muninn ask` as a terminal prompt, and over MCP as a pending diff that the calling agent approves by replying in the same conversation (`conversation_id`).
 
+### In the TUI
+
+Muninn's replies render as Markdown: headings, emphasis, lists and task lists, quotes and `> [!NOTE]` alerts, code blocks, tables, links, `[[wikilinks]]`, footnotes, and `$math$` (shown as source).
+
+| Command | What it does |
+|---|---|
+| `/help` | Commands and keyboard shortcuts |
+| `/new` | Start a new conversation (Ctrl+N) |
+| `/resume` | Continue an earlier conversation (Ctrl+O) |
+| `/log` | Recent changes Muninn made to the vault |
+| `/undo [id]` | Revert the latest change, or the one with this id |
+| `/init` | Redo setup and onboarding |
+| `/quit`, `/exit` | Leave (Ctrl+C) |
+
+Typing `/` opens the command list (↑↓ select, Tab complete, Enter run). Enter sends; Ctrl+Enter, Shift+Enter, Alt+Enter, or Ctrl+J insert a new line. Ctrl/Alt+←→ move by word, Ctrl/Alt+Backspace and Ctrl+W delete a word, Ctrl+Delete and Alt+D delete the next word, Ctrl+U and Ctrl+K delete to the line's start or end, and Ctrl+Home/End jump to the message's start or end. On macOS, Cmd+←→, Cmd+↑↓, and Cmd+Backspace work too. Ctrl+Enter, Shift+Enter, and Cmd need a terminal with the kitty keyboard protocol (kitty, Ghostty, WezTerm, foot, iTerm2); Alt+Enter and Ctrl+J work everywhere.
+
 ### Add to an agent by hand
 
 ```sh
@@ -60,7 +76,7 @@ Each crate stands alone; only `muninn-core` and the binary know what Muninn is.
 | `muninn-agent` | Tool-calling agent loop with events and cancellation | `muninn-ai` |
 | `muninn-vault` | Sandboxed vault access (tree, read, search, write) and the undoable change journal | — |
 | `muninn-mcp` | Tools-only MCP server over stdio JSON-RPC | — |
-| `muninn-tui` | ratatui pieces: terminal guard, input editor, chat log, diff view, picker | — |
+| `muninn-tui` | ratatui pieces: terminal guard, input editor, chat log, Markdown renderer, diff view, picker | — |
 | `muninn-core` | The librarian: settings, conversations, vault tools, prompts, review flow | ai, agent, vault |
 | `muninn` | The binary: CLI, MCP surface, TUI app, onboarding, agent integration | core, mcp, tui, vault |
 
