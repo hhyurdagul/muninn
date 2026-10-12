@@ -30,9 +30,7 @@ pub struct Hit {
 impl Vault {
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref();
-        let root = root
-            .canonicalize()
-            .with_context(|| format!("vault {} does not exist", root.display()))?;
+        let root = root.canonicalize().with_context(|| format!("vault {} does not exist", root.display()))?;
         if !root.is_dir() {
             bail!("vault {} is not a directory", root.display());
         }
@@ -48,8 +46,7 @@ impl Vault {
     pub fn resolve(&self, path: &str) -> Result<PathBuf> {
         let raw = Path::new(path.trim());
         let rel = if raw.is_absolute() {
-            raw.strip_prefix(&self.root)
-                .with_context(|| format!("{path} is outside the vault"))?
+            raw.strip_prefix(&self.root).with_context(|| format!("{path} is outside the vault"))?
         } else {
             raw
         };
@@ -75,10 +72,7 @@ impl Vault {
     /// Vault-relative display form of an absolute path, with `/` separators.
     pub fn relative(&self, abs: &Path) -> String {
         let rel = abs.strip_prefix(&self.root).unwrap_or(abs);
-        rel.components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
+        rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
     }
 
     /// Reads a text note; `None` when it does not exist.
@@ -173,10 +167,7 @@ impl Vault {
     /// `query` is a regex when `regex` is set, else a literal.
     pub fn search(&self, query: &str, regex: bool, dir: &str, max: usize) -> Result<Vec<Hit>> {
         let pattern = if regex { query.to_string() } else { regex::escape(query) };
-        let re = RegexBuilder::new(&pattern)
-            .case_insensitive(true)
-            .build()
-            .context("invalid regex")?;
+        let re = RegexBuilder::new(&pattern).case_insensitive(true).build().context("invalid regex")?;
         let base = self.resolve(dir)?;
         let mut hits = Vec::new();
         let walker = WalkDir::new(&base)

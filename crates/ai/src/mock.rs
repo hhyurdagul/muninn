@@ -22,12 +22,27 @@ pub struct MockServer {
 impl MockServer {
     /// Replies with `script` in order, then with a fixed text once exhausted.
     pub async fn scripted(script: Vec<Message>) -> std::io::Result<Self> {
-        let queue = Mutex::new(std::collections::VecDeque::from(script));
-        Self::start(move |_| queue.lock().pop_front().unwrap_or_else(|| Message::assistant("(script exhausted)"))).await
+        Self::scripted_on(0, script).await
     }
 
+    /// Like [`MockServer::scripted`] on a fixed port (0 picks a free one).
+    pub async fn scripted_on(port: u16, script: Vec<Message>) -> std::io::Result<Self> {
+        let queue = Mutex::new(std::collections::VecDeque::from(script));
+        let next =
+            move |_: &Value| queue.lock().pop_front().unwrap_or_else(|| Message::assistant("(script exhausted)"));
+        Self::start_on(port, next).await
+    }
+
+    /// Replies with whatever `handler` returns for each request body.
     pub async fn start(handler: impl Fn(&Value) -> Message + Send + Sync + 'static) -> std::io::Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        Self::start_on(0, handler).await
+    }
+
+    pub async fn start_on(
+        port: u16,
+        handler: impl Fn(&Value) -> Message + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", port)).await?;
         let url = format!("http://{}/v1", listener.local_addr()?);
         let requests = Arc::new(Mutex::new(Vec::new()));
         let handler: Arc<Handler> = Arc::new(handler);
@@ -114,7 +129,8 @@ mod tests {
     #[tokio::test]
     async fn roundtrips_text_and_tool_calls_through_the_real_client() {
         let mut call = Message::assistant("Let me look… ğ");
-        call.tool_calls = vec![ToolCall { id: "t1".into(), name: "read".into(), arguments: r#"{"path":"çay.md"}"#.into() }];
+        call.tool_calls =
+            vec![ToolCall { id: "t1".into(), name: "read".into(), arguments: r#"{"path":"çay.md"}"#.into() }];
         let server = MockServer::scripted(vec![call.clone()]).await.unwrap();
         let provider = OpenAiCompatible::new(&server.url, "key", "model");
         let messages = [Message::user("hi")];

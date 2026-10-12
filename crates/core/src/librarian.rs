@@ -107,7 +107,7 @@ impl Librarian {
         let mut reported = 0;
         let mut on_event = |event: Event| match event {
             Event::Text(delta) => on_update(Update::Text(delta)),
-            Event::ToolStart { name, args } => on_update(Update::Tool { name, detail: describe(&args) }),
+            Event::ToolStart { name, args } => on_update(Update::Tool { name, detail: tool_detail(&args) }),
             Event::ToolEnd { .. } => {
                 let notes = ctx.notes.lock();
                 for note in &notes[reported..] {
@@ -116,9 +116,7 @@ impl Librarian {
                 reported = notes.len();
             }
         };
-        let outcome = agent
-            .run(&system, &mut conversation.messages, Message::user(text), &mut on_event, cancel)
-            .await;
+        let outcome = agent.run(&system, &mut conversation.messages, Message::user(text), &mut on_event, cancel).await;
 
         let notes = ctx.notes.lock().clone();
         conversation.pending = ctx.pending.lock().clone();
@@ -142,7 +140,8 @@ pub async fn check_model(settings: &Settings) -> Result<String> {
     Ok(reply.content)
 }
 
-fn describe(args: &Value) -> String {
+/// The most telling argument of a tool call (path, query, or change id), for display.
+pub fn tool_detail(args: &Value) -> String {
     ["path", "query", "change_id"]
         .iter()
         .find_map(|k| args.get(*k).and_then(Value::as_str))

@@ -124,9 +124,7 @@ fn muninn_command() -> Result<PathBuf> {
 }
 
 fn which(binary: &str) -> Option<PathBuf> {
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|dir| dir.join(binary))
-        .find(|p| p.is_file())
+    std::env::split_paths(&std::env::var_os("PATH")?).map(|dir| dir.join(binary)).find(|p| p.is_file())
 }
 
 #[cfg(test)]

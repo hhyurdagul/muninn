@@ -6,8 +6,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use muninn_core::{
-    CancellationToken, Conversation, Decision, Kind, Librarian, NoteEvent, NoteKind, Paths, Proposal, Review,
-    Reviewer, Settings, Stop, Store, Surface, Update,
+    CancellationToken, Conversation, Decision, Kind, Librarian, NoteEvent, NoteKind, Paths, Proposal, Review, Reviewer,
+    Settings, Stop, Store, Surface, Update,
 };
 use muninn_tui::ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 use muninn_tui::ratatui::layout::{Constraint, Layout, Rect};
@@ -54,7 +54,10 @@ impl Chat {
     pub fn new(paths: &Paths, settings: &Settings, onboarding: bool, tx: Tx) -> Result<Self> {
         let librarian = Arc::new(Librarian::from_settings(settings, paths)?);
         let kind = if onboarding { Kind::Onboarding } else { Kind::Chat };
-        let conversation = Conversation::new(Surface::Tui, kind, librarian.vault().root());
+        let mut conversation = Conversation::new(Surface::Tui, kind, librarian.vault().root());
+        if onboarding {
+            conversation.title = "Onboarding".into();
+        }
         let mut chat = Self {
             librarian,
             store: Store::new(paths.conversations_dir()),
@@ -85,7 +88,7 @@ impl Chat {
 
     fn send(&mut self, text: String) {
         let Some(mut conversation) = self.conversation.take() else { return };
-        self.log.push(Item::labeled("you", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), text.clone(), Style::default()));
+        self.log.push(said("you", Color::Cyan, &text));
         self.log.scroll_down(usize::MAX);
         self.streaming = false;
         let cancel = CancellationToken::new();
@@ -107,7 +110,7 @@ impl Chat {
         match event {
             AppEvent::Update(Update::Text(delta)) => {
                 if !self.streaming {
-                    self.log.push(Item::labeled("muninn", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD), "", Style::default()));
+                    self.log.push(said("muninn", Color::Magenta, ""));
                     self.streaming = true;
                 }
                 if let Some(item) = self.log.items.last_mut() {
@@ -120,7 +123,9 @@ impl Chat {
             }
             AppEvent::Update(Update::Note(note)) => {
                 if note.kind == NoteKind::Changed {
-                    self.log.push(Item::new(format!("  ✎ saved {}", note.path), Style::default().fg(Color::Green)).compact());
+                    self.log.push(
+                        Item::new(format!("  ✎ saved {}", note.path), Style::default().fg(Color::Green)).compact(),
+                    );
                 }
                 self.notes.push(note);
             }
@@ -130,13 +135,18 @@ impl Chat {
                 self.streaming = false;
                 match result {
                     Ok(r) if r.stop == Stop::Cancelled => self.log.push(Item::new("(cancelled)", dim())),
-                    Ok(r) if r.stop == Stop::StepLimit => self.log.push(Item::new("(stopped after too many steps)", dim())),
+                    Ok(r) if r.stop == Stop::StepLimit => {
+                        self.log.push(Item::new("(stopped after too many steps)", dim()))
+                    }
                     Ok(_) => {}
                     Err(e) => self.log.push(Item::new(format!("Error: {e}"), Style::default().fg(Color::Red))),
                 }
                 self.title = conversation.title.clone();
                 if let Err(e) = self.store.save(&conversation) {
-                    self.log.push(Item::new(format!("Could not save the conversation: {e:#}"), Style::default().fg(Color::Red)));
+                    self.log.push(Item::new(
+                        format!("Could not save the conversation: {e:#}"),
+                        Style::default().fg(Color::Red),
+                    ));
                 }
                 self.conversation = Some(*conversation);
                 return self.quit_after_turn;
@@ -222,7 +232,11 @@ impl Chat {
             .iter()
             .map(|c| {
                 let title = if c.title.is_empty() { "(untitled)" } else { &c.title };
-                format!("{}  {:<4} {title}", c.updated.format("%Y-%m-%d %H:%M"), format!("{:?}", c.surface).to_lowercase())
+                format!(
+                    "{}  {:<4} {title}",
+                    c.updated.format("%Y-%m-%d %H:%M"),
+                    format!("{:?}", c.surface).to_lowercase()
+                )
             })
             .collect();
         self.history = Some((Picker::new(items), conversations));
@@ -247,20 +261,20 @@ impl Chat {
 
     /// Starts a fresh conversation, or continues `conversation`.
     fn reset(&mut self, conversation: Option<Conversation>) {
-        let conversation = conversation
-            .unwrap_or_else(|| Conversation::new(Surface::Tui, Kind::Chat, self.librarian.vault().root()));
+        let conversation =
+            conversation.unwrap_or_else(|| Conversation::new(Surface::Tui, Kind::Chat, self.librarian.vault().root()));
         self.log.clear();
         for message in &conversation.messages {
             use muninn_core::Role;
             match message.role {
-                Role::User => self.log.push(Item::labeled("you", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), message.content.clone(), Style::default())),
+                Role::User => self.log.push(said("you", Color::Cyan, &message.content)),
                 Role::Assistant => {
                     if !message.content.trim().is_empty() {
-                        self.log.push(Item::labeled("muninn", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD), message.content.clone(), Style::default()));
+                        self.log.push(said("muninn", Color::Magenta, &message.content));
                     }
                     for call in &message.tool_calls {
-                        let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
-                        let detail = ["path", "query", "change_id"].iter().find_map(|k| args.get(*k).and_then(|v| v.as_str())).unwrap_or("");
+                        let args = serde_json::from_str(&call.arguments).unwrap_or_default();
+                        let detail = muninn_core::tool_detail(&args);
                         self.log.push(Item::new(format!("  ↳ {} {detail}", call.name), dim()).compact());
                     }
                 }
@@ -288,7 +302,10 @@ impl Chat {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(" Muninn ", Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)),
-                Span::styled(format!("  {}  ·  {}  ·  {title}", tilde(self.librarian.vault().root()), self.model), dim()),
+                Span::styled(
+                    format!("  {}  ·  {}  ·  {title}", tilde(self.librarian.vault().root()), self.model),
+                    dim(),
+                ),
             ])),
             header,
         );
@@ -312,7 +329,8 @@ impl Chat {
         let status = if busy {
             format!(" {} working · Esc cancel · Ctrl+C quit", SPINNER[self.frame / 2 % SPINNER.len()])
         } else {
-            " Enter send · Alt+Enter newline · PgUp/PgDn scroll · Ctrl+O conversations · Ctrl+N new · Ctrl+C quit".into()
+            " Enter send · Alt+Enter newline · PgUp/PgDn scroll · Ctrl+O conversations · Ctrl+N new · Ctrl+C quit"
+                .into()
         };
         frame.render_widget(Paragraph::new(Span::styled(status, dim())), footer);
 
@@ -322,9 +340,8 @@ impl Chat {
         if let Some((picker, _)) = &mut self.history {
             let popup = centered(area, area.width.saturating_sub(10).min(100), area.height.saturating_sub(6).min(24));
             frame.render_widget(Clear, popup);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .title(" Continue a conversation · Enter open · Esc close ");
+            let block =
+                Block::default().borders(Borders::ALL).title(" Continue a conversation · Enter open · Esc close ");
             if picker.items.is_empty() {
                 frame.render_widget(Paragraph::new("No saved conversations yet.").block(block), popup);
             } else {
@@ -366,7 +383,10 @@ fn draw_approval(frame: &mut Frame, approval: &Approval) {
         .border_style(Style::default().fg(Color::Yellow))
         .title(format!(" Approve change to {}? ", proposal.path))
         .title_bottom(" y approve · n reject · ↑↓ scroll ");
-    let mut lines = vec![Line::from(Span::styled(proposal.summary.clone(), Style::default().add_modifier(Modifier::BOLD))), Line::default()];
+    let mut lines = vec![
+        Line::from(Span::styled(proposal.summary.clone(), Style::default().add_modifier(Modifier::BOLD))),
+        Line::default(),
+    ];
     lines.extend(diff_lines(&proposal.diff()));
     frame.render_widget(Paragraph::new(lines).block(block).scroll((approval.scroll, 0)), popup);
 }
@@ -387,4 +407,9 @@ impl Reviewer for ChannelReviewer {
         }
         answer.await.unwrap_or_else(|_| Decision::Reject("the review was interrupted".into()))
     }
+}
+
+/// A message in the transcript, labeled with who said it.
+fn said(who: &str, color: Color, text: &str) -> Item {
+    Item::labeled(who, Style::default().fg(color).add_modifier(Modifier::BOLD), text, Style::default())
 }

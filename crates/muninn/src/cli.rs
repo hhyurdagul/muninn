@@ -7,8 +7,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use muninn_core::{
-    CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal, Review, Reviewer,
-    Settings, Stop, Surface, Update,
+    CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal, Review, Reviewer, Settings,
+    Stop, Surface, Update,
 };
 use muninn_vault::{Journal, Undo, Vault};
 
@@ -51,9 +51,7 @@ pub async fn ask(words: Vec<String>) -> Result<i32> {
         _ => {}
     };
     let review = Review::Interactive(Arc::new(TerminalReviewer));
-    let result = librarian
-        .turn(&mut conversation, &prompt, review, &mut on_update, &CancellationToken::new())
-        .await?;
+    let result = librarian.turn(&mut conversation, &prompt, review, &mut on_update, &CancellationToken::new()).await?;
     if live {
         if mid_line {
             println!();
@@ -84,11 +82,8 @@ impl Reviewer for TerminalReviewer {
 }
 
 fn confirm(proposal: &Proposal) -> Result<Decision> {
-    let mut tty = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")
-        .context("no terminal to confirm on")?;
+    let mut tty =
+        std::fs::OpenOptions::new().read(true).write(true).open("/dev/tty").context("no terminal to confirm on")?;
     writeln!(tty, "\n{} ({})", proposal.path, proposal.summary)?;
     for line in proposal.diff().lines() {
         let color = match line.chars().next() {
@@ -125,10 +120,7 @@ pub fn undo(id: Option<&str>) -> Result<i32> {
             Ok(0)
         }
         Undo::Conflict { original } => {
-            eprintln!(
-                "Conflict: {} was edited after change {}; nothing was reverted.",
-                original.path, original.id
-            );
+            eprintln!("Conflict: {} was edited after change {}; nothing was reverted.", original.path, original.id);
             Ok(2)
         }
     }
@@ -143,13 +135,7 @@ pub fn log(limit: usize) -> Result<i32> {
     }
     for entry in entries.iter().rev().take(limit) {
         let mark = if reverted.contains(&entry.id) { " (undone)" } else { "" };
-        println!(
-            "{}  {}  {}  {}{mark}",
-            entry.id,
-            entry.time.format("%Y-%m-%d %H:%M"),
-            entry.path,
-            entry.summary
-        );
+        println!("{}  {}  {}  {}{mark}", entry.id, entry.time.format("%Y-%m-%d %H:%M"), entry.path, entry.summary);
     }
     Ok(0)
 }

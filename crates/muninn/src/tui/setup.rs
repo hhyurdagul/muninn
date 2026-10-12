@@ -7,7 +7,7 @@ use muninn_core::{check_model, Paths, Settings};
 use muninn_tui::ratatui::crossterm::event::{Event, KeyCode};
 use muninn_tui::ratatui::layout::{Constraint, Layout};
 use muninn_tui::ratatui::style::{Color, Modifier, Style};
-use muninn_tui::ratatui::text::{Line, Span};
+use muninn_tui::ratatui::text::Line;
 use muninn_tui::ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use muninn_tui::ratatui::Frame;
 use muninn_tui::{centered, Input, Picker};
@@ -228,12 +228,18 @@ impl Setup {
             Layout::vertical([Constraint::Length(4), Constraint::Min(4), Constraint::Length(5)]).areas(inner);
 
         let intro_text = match self.step {
-            Step::Vault => "Pick the folder that holds your notes. Muninn only reads and writes inside it. \
-An empty or new folder starts a vault from zero.",
-            Step::Model => "Muninn talks to any OpenAI-compatible endpoint. The key is stored in Muninn's \
-own settings, never in the vault.",
-            Step::Agents => "Muninn can register `muninn mcp` with the agents installed here, so they can \
-save to and ask your vault from any project.",
+            Step::Vault => {
+                "Pick the folder that holds your notes. Muninn only reads and writes inside it. \
+An empty or new folder starts a vault from zero."
+            }
+            Step::Model => {
+                "Muninn talks to any OpenAI-compatible endpoint. The key is stored in Muninn's \
+own settings, never in the vault."
+            }
+            Step::Agents => {
+                "Muninn can register `muninn mcp` with the agents installed here, so they can \
+save to and ask your vault from any project."
+            }
         };
         frame.render_widget(Paragraph::new(intro_text).wrap(Wrap { trim: true }), intro);
 
@@ -246,20 +252,27 @@ save to and ask your vault from any project.",
                     if i == self.focus {
                         self.fields[i].render(frame, area, block);
                     } else {
-                        let text = if self.fields[i].masked { "•".repeat(self.fields[i].text().chars().count()) } else { self.fields[i].text().to_string() };
+                        let text = if self.fields[i].masked {
+                            "•".repeat(self.fields[i].text().chars().count())
+                        } else {
+                            self.fields[i].text().to_string()
+                        };
                         frame.render_widget(Paragraph::new(text).block(block), area);
                     }
                 }
             }
             Step::Agents if self.agents.is_empty() => {
-                frame.render_widget(Paragraph::new("No supported agents (Claude Code, Codex, omp) found on PATH."), body);
+                frame.render_widget(
+                    Paragraph::new("No supported agents (Claude Code, Codex, omp) found on PATH."),
+                    body,
+                );
             }
             Step::Agents => self.picker.render(frame, body, Block::default()),
         }
 
         if let Some((text, is_error)) = &self.message {
             let style = if *is_error { Style::default().fg(Color::Red) } else { Style::default().fg(Color::Green) };
-            frame.render_widget(Paragraph::new(Span::styled(text.clone(), style)).wrap(Wrap { trim: false }), message);
+            frame.render_widget(Paragraph::new(text.clone()).style(style).wrap(Wrap { trim: false }), message);
         }
     }
 }
@@ -270,7 +283,8 @@ fn field_area(body: muninn_tui::ratatui::layout::Rect, index: usize) -> muninn_t
 }
 
 fn field_block(label: &str, focused: bool) -> Block<'static> {
-    let style = if focused { Style::default().add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::DarkGray) };
+    let style =
+        if focused { Style::default().add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::DarkGray) };
     Block::default().borders(Borders::ALL).border_style(style).title(Line::from(format!(" {label} ")))
 }
 

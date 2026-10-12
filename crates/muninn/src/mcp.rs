@@ -93,16 +93,16 @@ impl MuninnTool {
             Some(id) => store.load(id)?,
             None => Conversation::new(Surface::Mcp, Kind::Chat, librarian.vault().root()),
         };
-        let result = librarian
-            .turn(&mut conversation, message, Review::Deferred, &mut |_| {}, &CancellationToken::new())
-            .await;
+        let result =
+            librarian.turn(&mut conversation, message, Review::Deferred, &mut |_| {}, &CancellationToken::new()).await;
         store.save(&conversation)?;
         Ok(render(&conversation, &result?))
     }
 }
 
 fn render(conversation: &Conversation, result: &TurnResult) -> String {
-    let mut out = if result.reply.trim().is_empty() { "(no reply)".to_string() } else { result.reply.trim().to_string() };
+    let mut out =
+        if result.reply.trim().is_empty() { "(no reply)".to_string() } else { result.reply.trim().to_string() };
     if result.stop == Stop::StepLimit {
         out.push_str("\n\n(Muninn stopped after too many steps.)");
     }
@@ -114,7 +114,10 @@ fn render(conversation: &Conversation, result: &TurnResult) -> String {
         }
     }
     if !read.is_empty() {
-        out.push_str(&format!("\nNotes read: {}", read.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ")));
+        out.push_str(&format!(
+            "\nNotes read: {}",
+            read.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ")
+        ));
     }
     for note in result.notes.iter().filter(|n| n.kind == NoteKind::Changed) {
         let id = note.id.as_deref().unwrap_or_default();

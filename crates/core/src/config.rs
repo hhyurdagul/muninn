@@ -55,12 +55,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            vault: None,
-            base_url: DEFAULT_BASE_URL.into(),
-            model: DEFAULT_MODEL.into(),
-            api_key: None,
-        }
+        Self { vault: None, base_url: DEFAULT_BASE_URL.into(), model: DEFAULT_MODEL.into(), api_key: None }
     }
 }
 

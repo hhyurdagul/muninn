@@ -137,11 +137,7 @@ impl Accumulator {
         for call in delta.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
             let index = call.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
             while self.calls.len() <= index {
-                self.calls.push(ToolCall {
-                    id: String::new(),
-                    name: String::new(),
-                    arguments: String::new(),
-                });
+                self.calls.push(ToolCall { id: String::new(), name: String::new(), arguments: String::new() });
             }
             let slot = &mut self.calls[index];
             if let Some(id) = call.get("id").and_then(Value::as_str) {

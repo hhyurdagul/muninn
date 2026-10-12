@@ -71,7 +71,10 @@ fn last(body: &Value) -> (String, String) {
 #[tokio::test(flavor = "multi_thread")]
 async fn cli_saves_from_another_folder_and_undo_reverts() {
     let server = MockServer::scripted(vec![
-        call("write_note", json!({"path":"ideas/ravens-remember.md","content":"Ravens remember faces.\n","summary":"Add raven idea"})),
+        call(
+            "write_note",
+            json!({"path":"ideas/ravens-remember.md","content":"Ravens remember faces.\n","summary":"Add raven idea"}),
+        ),
         Message::assistant("Saved to `ideas/ravens-remember.md`."),
     ])
     .await
@@ -143,7 +146,12 @@ impl Mcp {
             next_id: 0,
             _child: child,
         };
-        let init = mcp.request("initialize", json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}})).await;
+        let init = mcp
+            .request(
+                "initialize",
+                json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}),
+            )
+            .await;
         assert_eq!(init["result"]["serverInfo"]["name"], "muninn");
         mcp.stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").await.unwrap();
         mcp
@@ -240,12 +248,12 @@ async fn mcp_conversation_continues_after_muninn_asks_back_and_cites_notes() {
     assert!(answer.contains("Notes read: `projects/muninn.md`"), "{answer}");
 
     let second_turn = &server.requests()[1];
-    let roles: Vec<&str> = second_turn["messages"].as_array().unwrap().iter().map(|m| m["role"].as_str().unwrap()).collect();
+    let roles: Vec<&str> =
+        second_turn["messages"].as_array().unwrap().iter().map(|m| m["role"].as_str().unwrap()).collect();
     assert_eq!(roles, ["system", "user", "assistant", "user"], "history was restored");
 
-    let saved: Value = serde_json::from_slice(
-        &fs::read(env.dir.path().join(format!("data/conversations/{id}.json"))).unwrap(),
-    )
-    .unwrap();
+    let saved: Value =
+        serde_json::from_slice(&fs::read(env.dir.path().join(format!("data/conversations/{id}.json"))).unwrap())
+            .unwrap();
     assert_eq!(saved["surface"], "mcp");
 }

@@ -9,7 +9,7 @@ mod tools;
 
 pub use config::{Paths, Settings, DEFAULT_BASE_URL, DEFAULT_MODEL};
 pub use conversation::{Conversation, Kind, NoteEvent, NoteKind, Proposal, Store, Surface};
-pub use librarian::{check_model, Decision, Librarian, Review, Reviewer, TurnResult, Update};
+pub use librarian::{check_model, tool_detail, Decision, Librarian, Review, Reviewer, TurnResult, Update};
 pub use muninn_agent::{CancellationToken, Stop};
 
 pub use muninn_ai::{Message, Role};

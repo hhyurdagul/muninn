@@ -33,19 +33,11 @@ impl Message {
     }
 
     pub fn tool_result(call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            tool_call_id: Some(call_id.into()),
-            ..Self::new(Role::Tool, content.into())
-        }
+        Self { tool_call_id: Some(call_id.into()), ..Self::new(Role::Tool, content.into()) }
     }
 
     fn new(role: Role, content: String) -> Self {
-        Self {
-            role,
-            content,
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-        }
+        Self { role, content, tool_calls: Vec::new(), tool_call_id: None }
     }
 }
 

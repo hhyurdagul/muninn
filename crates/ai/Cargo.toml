@@ -22,3 +22,7 @@ tokio = { workspace = true, optional = true }
 [dev-dependencies]
 parking_lot.workspace = true
 tokio.workspace = true
+
+[[example]]
+name = "mock_server"
+required-features = ["mock"]

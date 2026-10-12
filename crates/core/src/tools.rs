@@ -50,10 +50,7 @@ pub(crate) fn toolset(ctx: Arc<TurnContext>) -> Vec<Arc<dyn Tool>> {
     if matches!(ctx.review, Review::Deferred) {
         kinds.extend([Kind::ApplyPending, Kind::DiscardPending]);
     }
-    kinds
-        .into_iter()
-        .map(|kind| Arc::new(VaultTool { kind, ctx: ctx.clone() }) as Arc<dyn Tool>)
-        .collect()
+    kinds.into_iter().map(|kind| Arc::new(VaultTool { kind, ctx: ctx.clone() }) as Arc<dyn Tool>).collect()
 }
 
 fn spec(name: &str, description: &str, properties: Value, required: &[&str]) -> ToolSpec {
@@ -177,8 +174,7 @@ impl Tool for VaultTool {
             }
             Kind::Write => {
                 let content = str_arg(&args, "content")?.to_string();
-                self.save(str_arg(&args, "path")?, content, str_arg(&args, "summary")?, review_arg(&args))
-                    .await
+                self.save(str_arg(&args, "path")?, content, str_arg(&args, "summary")?, review_arg(&args)).await
             }
             Kind::Edit => {
                 let path = str_arg(&args, "path")?;
@@ -280,10 +276,7 @@ impl TurnContext {
 
     fn take_pending(&self, id: &str) -> Result<Proposal> {
         let mut pending = self.pending.lock();
-        let index = pending
-            .iter()
-            .position(|p| p.id == id)
-            .with_context(|| format!("no pending change {id}"))?;
+        let index = pending.iter().position(|p| p.id == id).with_context(|| format!("no pending change {id}"))?;
         Ok(pending.remove(index))
     }
 }

@@ -186,7 +186,10 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_protocol_version_gets_latest() {
-        let replies = roundtrip("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"1999\"}}\n").await;
+        let replies = roundtrip(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"1999\"}}\n",
+        )
+        .await;
         assert_eq!(replies[0]["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
     }
 }

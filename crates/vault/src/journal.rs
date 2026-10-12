@@ -33,9 +33,14 @@ pub struct Entry {
 
 #[derive(Debug)]
 pub enum Undo {
-    Reverted { original: Entry, undo: Box<Entry> },
+    Reverted {
+        original: Entry,
+        undo: Box<Entry>,
+    },
     /// The note changed after the entry was made; nothing was touched.
-    Conflict { original: Entry },
+    Conflict {
+        original: Entry,
+    },
 }
 
 pub struct Journal {
@@ -102,10 +107,7 @@ impl Journal {
         let entries = self.entries()?;
         let reverted: HashSet<&str> = entries.iter().filter_map(|e| e.reverts.as_deref()).collect();
         let original = match id {
-            Some(id) => entries
-                .iter()
-                .find(|e| e.id == id)
-                .with_context(|| format!("no change with id {id}"))?,
+            Some(id) => entries.iter().find(|e| e.id == id).with_context(|| format!("no change with id {id}"))?,
             None => entries
                 .iter()
                 .rev()

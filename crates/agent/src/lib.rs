@@ -105,8 +105,7 @@ impl Agent {
         let args: Value = if call.arguments.trim().is_empty() {
             Value::Object(Default::default())
         } else {
-            serde_json::from_str(&call.arguments)
-                .map_err(|e| anyhow::anyhow!("arguments are not valid JSON ({e})"))?
+            serde_json::from_str(&call.arguments).map_err(|e| anyhow::anyhow!("arguments are not valid JSON ({e})"))?
         };
         let tool = self
             .tools
@@ -161,7 +160,11 @@ mod tests {
         m.tool_calls = calls
             .iter()
             .enumerate()
-            .map(|(i, (name, args))| ToolCall { id: format!("c{i}"), name: name.to_string(), arguments: args.to_string() })
+            .map(|(i, (name, args))| ToolCall {
+                id: format!("c{i}"),
+                name: name.to_string(),
+                arguments: args.to_string(),
+            })
             .collect();
         m
     }
@@ -196,10 +199,8 @@ mod tests {
     async fn stops_at_step_limit_with_a_valid_transcript() {
         let agent = agent(vec![calls(&[("echo", "{}")]), calls(&[("echo", "{}")])]).max_steps(2);
         let mut history = Vec::new();
-        let outcome = agent
-            .run("sys", &mut history, Message::user("hi"), &mut |_| {}, &CancellationToken::new())
-            .await
-            .unwrap();
+        let outcome =
+            agent.run("sys", &mut history, Message::user("hi"), &mut |_| {}, &CancellationToken::new()).await.unwrap();
         assert_eq!(outcome.stop, Stop::StepLimit);
         assert_eq!(history.last().unwrap().tool_call_id.as_deref(), Some("c0"));
     }
