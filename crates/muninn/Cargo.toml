@@ -18,4 +18,5 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+muninn-ai = { workspace = true, features = ["mock"] }
 tempfile.workspace = true

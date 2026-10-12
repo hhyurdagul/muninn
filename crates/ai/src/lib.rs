@@ -11,6 +11,8 @@
 //! # Ok(()) }
 //! ```
 
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
 mod openai;
 mod sse;
 mod types;
