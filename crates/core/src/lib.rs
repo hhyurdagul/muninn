@@ -12,6 +12,7 @@ pub use conversation::{Conversation, Kind, NoteEvent, NoteKind, Proposal, Store,
 pub use librarian::{check_model, Decision, Librarian, Review, Reviewer, TurnResult, Update};
 pub use muninn_agent::{CancellationToken, Stop};
 
+pub use muninn_ai::{Message, Role};
 fn new_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);

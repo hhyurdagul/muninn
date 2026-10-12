@@ -1,0 +1,21 @@
+[package]
+name = "muninn"
+description = "Your knowledge vault, reachable from anywhere: save, ask, and talk via CLI, MCP, and TUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+dirs.workspace = true
+muninn-core.workspace = true
+muninn-mcp.workspace = true
+muninn-tui.workspace = true
+muninn-vault.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

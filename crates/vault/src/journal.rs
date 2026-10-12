@@ -33,7 +33,7 @@ pub struct Entry {
 
 #[derive(Debug)]
 pub enum Undo {
-    Reverted { original: Entry, undo: Entry },
+    Reverted { original: Entry, undo: Box<Entry> },
     /// The note changed after the entry was made; nothing was touched.
     Conflict { original: Entry },
 }
@@ -135,7 +135,7 @@ impl Journal {
                 reverts: Some(original.id.clone()),
             },
         )?;
-        Ok(Undo::Reverted { original: original.clone(), undo })
+        Ok(Undo::Reverted { original: original.clone(), undo: Box::new(undo) })
     }
 
     pub fn path(&self) -> &Path {

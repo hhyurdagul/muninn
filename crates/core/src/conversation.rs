@@ -135,7 +135,7 @@ impl Store {
             .filter_map(|e| serde_json::from_slice(&fs::read(e.path()).ok()?).ok())
             .filter(|c: &Conversation| c.vault == vault)
             .collect();
-        all.sort_by(|a, b| b.updated.cmp(&a.updated));
+        all.sort_by_key(|c| std::cmp::Reverse(c.updated));
         Ok(all)
     }
 
