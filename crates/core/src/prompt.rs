@@ -13,9 +13,15 @@ pub(crate) const MEMORY: &str = "MEMORY.md";
 /// instructions.
 pub const MEMORY_LIMIT: usize = 3000;
 
-/// The vault's MEMORY.md, if it has any content.
+/// The vault's MEMORY.md as agents get it: without frontmatter, which would
+/// only take up their instruction budget. `None` when it has no content.
 pub fn memory(vault: &Vault) -> Option<String> {
-    vault.read(MEMORY).ok().flatten().map(|text| text.trim().to_string()).filter(|text| !text.is_empty())
+    let text = vault.read(MEMORY).ok().flatten()?;
+    let body = text
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.find("\n---").map(|end| &rest[end + 4..]))
+        .map_or(text.as_str(), |rest| rest.split_once('\n').map_or("", |(_, body)| body));
+    Some(body.trim().to_string()).filter(|body| !body.is_empty())
 }
 
 /// Builds the system prompt fresh for every turn so rule edits apply at once.
@@ -36,9 +42,13 @@ plainly that you could not run it; never pretend the rule is satisfied.
 - Decide what each message is: something to save, a question, a change to existing notes, or conversation.
 - Saving: follow the vault rules below for location, file names, frontmatter, links, and language. Look at \
 similar existing notes first so the new note matches them. Update an existing note instead of creating a \
-duplicate when that fits the rules. Report what you wrote and where.
-- Asking: search and read the relevant notes and answer from them. Cite every note you used by its \
-vault-relative path, like `projects/muninn.md`. If the vault does not contain the answer, say so.
+duplicate when that fits the rules. When a change makes other statements in a note outdated, fix those too \
+instead of only adding a new section. Report what you wrote and where.
+- Asking: search and read the relevant notes and answer from them. A search result shows only matching \
+lines, so read every note you cite. Cite every note you used by its vault-relative path, like \
+`projects/muninn.md`. If the vault does not contain the answer, say so.
+- Report only what your tool results show. Say you linked notes only if you wrote real links in the \
+vault's link style, and say a search found nothing only if it returned nothing.
 - If you need information to act correctly (an ambiguous target, missing context), ask a short question \
 and end your turn instead of guessing.
 - Review: if the vault rules say changes must be reviewed before they land, pass review=true on every write; \
@@ -76,7 +86,8 @@ not exist for you.
         today = chrono::Local::now().format("%Y-%m-%d (%A)"),
         surface = surface_text(surface),
         rules = rules(vault),
-        memory = memory(vault).unwrap_or_else(|| "(none yet)".into()),
+        memory =
+            vault.read(MEMORY).ok().flatten().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "(none yet)".into()),
         limit = MEMORY_LIMIT,
     );
     if kind == Kind::Onboarding {
@@ -151,3 +162,21 @@ exists, otherwise in AGENTS.md.
 Keep messages short and ask one or two questions at a time. When everything is settled, say that onboarding \
 is done and that the user can now save to and ask the vault from anywhere.
 ";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agents_get_memory_without_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+        let memory_of = |text: &str| {
+            std::fs::write(dir.path().join(MEMORY), text).unwrap();
+            memory(&vault)
+        };
+        assert_eq!(memory_of("---\ntype: note\n---\n# Memory\n- Rust\n").as_deref(), Some("# Memory\n- Rust"));
+        assert_eq!(memory_of("# Memory\n---\n- Rust\n").as_deref(), Some("# Memory\n---\n- Rust"));
+        assert_eq!(memory_of("---\ntype: note\n---\n\n"), None);
+    }
+}
