@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::provider::ProviderKind;
 
-pub const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.5";
+pub const DEFAULT_MODEL: &str = "deepseek/deepseek-v4.1-flash";
 
 /// Where Muninn keeps its own files, all outside the vault.
 /// `MUNINN_CONFIG_DIR` and `MUNINN_DATA_DIR` override the defaults.

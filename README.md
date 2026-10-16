@@ -38,7 +38,7 @@ Muninn reads, searches, and writes notes inside the vault only, never outside th
 
 | Provider | How Muninn talks to it | Key variable |
 |---|---|---|
-| OpenRouter (default) | OpenAI format | `OPENROUTER_API_KEY` |
+| OpenRouter (default; model `deepseek/deepseek-v4.1-flash`) | OpenAI format | `OPENROUTER_API_KEY` |
 | Anthropic | Anthropic's Messages API, with prompt caching | `ANTHROPIC_API_KEY` |
 | OpenAI | OpenAI format | `OPENAI_API_KEY` |
 | Gemini | Google's OpenAI-compatible endpoint | `GEMINI_API_KEY` |
