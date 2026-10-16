@@ -340,8 +340,8 @@ async fn agents_get_memory_at_startup_and_only_a_reviewed_change_updates_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn model_switches_only_after_a_test_call_and_keeps_keys_per_provider() {
-    let server = MockServer::scripted(vec![Message::assistant("OK")]).await.unwrap();
+async fn model_switches_without_calling_the_model_and_keeps_keys_per_provider() {
+    let server = MockServer::scripted(vec![]).await.unwrap();
     let env = Env::new(&server.url);
     let config = || fs::read_to_string(env.dir.path().join("config/config.toml")).unwrap();
 
@@ -359,7 +359,7 @@ async fn model_switches_only_after_a_test_call_and_keeps_keys_per_provider() {
     assert!(out.contains("custom · mock-2"));
     assert!(config().contains("model = \"mock-2\""));
     assert!(config().contains("custom = \"test\""), "the key stays with its provider");
-    assert_eq!(server.requests().last().unwrap()["model"], "mock-2");
+    assert!(server.requests().is_empty(), "switching sends nothing to the model");
 }
 
 #[tokio::test(flavor = "multi_thread")]

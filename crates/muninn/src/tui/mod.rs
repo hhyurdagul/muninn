@@ -28,7 +28,6 @@ pub(crate) enum AppEvent {
     Update(Update),
     Review(Proposal, oneshot::Sender<Decision>),
     TurnDone(Box<Conversation>, Result<TurnResult, String>),
-    ModelChecked(Result<String, String>),
     Models(Result<Vec<String>, String>),
 }
 

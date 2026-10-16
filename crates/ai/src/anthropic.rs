@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::{json, Value};
 
-use crate::openai::{model_ids, truncate};
+use crate::openai::{error_text, model_ids, truncate};
 use crate::sse::SseParser;
 use crate::types::{Message, Provider, Request, Role, ToolCall};
 
@@ -131,7 +131,7 @@ impl Provider for Anthropic {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            bail!("Anthropic returned {status}: {}", truncate(&text, 1000));
+            bail!("Anthropic returned {status}: {}", error_text(&text));
         }
 
         let mut parser = SseParser::default();

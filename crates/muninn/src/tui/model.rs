@@ -1,8 +1,8 @@
 //! Choosing a provider and model: provider, then endpoint (custom only) and
-//! key when needed, then a model from the provider's list, then a test call.
-//! Used by onboarding and by `/model`.
+//! key when needed, then a model from the provider's list. Nothing is sent to
+//! the model until the first message. Used by onboarding and by `/model`.
 
-use muninn_core::{check_model, list_models, ProviderKind, Settings};
+use muninn_core::{list_models, ProviderKind, Settings};
 use muninn_tui::ratatui::crossterm::event::{KeyCode, KeyEvent};
 use muninn_tui::ratatui::layout::{Constraint, Layout, Rect};
 use muninn_tui::ratatui::style::{Color, Modifier, Style};
@@ -16,7 +16,7 @@ use super::{AppEvent, Tx};
 pub enum Outcome {
     Pending,
     Cancel,
-    /// A model that answered the test call; the caller saves the settings.
+    /// The chosen provider and model; the caller saves the settings.
     Done(Settings),
 }
 
@@ -134,7 +134,7 @@ impl ModelChoice {
                     self.message = Some(("Type a model id.".into(), true));
                 } else {
                     self.settings.model = chosen;
-                    self.check(tx);
+                    return Outcome::Done(self.settings.clone());
                 }
             }
             (Stage::Model, KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown) => {
@@ -153,7 +153,7 @@ impl ModelChoice {
         Outcome::Pending
     }
 
-    /// Results of the model list and the test call.
+    /// The model list, fetched in the background.
     pub fn on_event(&mut self, event: AppEvent) -> Outcome {
         match event {
             AppEvent::Models(result) => {
@@ -175,14 +175,6 @@ impl ModelChoice {
                 }
                 if current.is_none() {
                     self.refilter();
-                }
-                Outcome::Pending
-            }
-            AppEvent::ModelChecked(result) => {
-                self.busy = false;
-                match result {
-                    Ok(_) => return Outcome::Done(self.settings.clone()),
-                    Err(e) => self.message = Some((format!("Test call failed: {e}"), true)),
                 }
                 Outcome::Pending
             }
@@ -212,16 +204,6 @@ impl ModelChoice {
         });
     }
 
-    fn check(&mut self, tx: &Tx) {
-        self.busy = true;
-        self.message = Some((format!("Making a test call to {}…", self.settings.model), false));
-        let (settings, tx) = (self.settings.clone(), tx.clone());
-        tokio::spawn(async move {
-            let result = check_model(&settings).await.map_err(|e| format!("{e:#}"));
-            let _ = tx.send(AppEvent::ModelChecked(result));
-        });
-    }
-
     fn refilter(&mut self) {
         let needle = self.filter.text().trim().to_lowercase();
         let items = self.models.iter().filter(|m| m.to_lowercase().contains(&needle)).cloned().collect();
@@ -232,7 +214,7 @@ impl ModelChoice {
         match self.stage {
             Stage::Provider => " ↑↓ select · Enter continue · Esc cancel ",
             Stage::Endpoint | Stage::Key => " Enter continue · Esc back ",
-            Stage::Model => " type to filter · ↑↓ select · Enter test & use · Esc back ",
+            Stage::Model => " type to filter · ↑↓ select · Enter use · Esc back ",
         }
     }
 

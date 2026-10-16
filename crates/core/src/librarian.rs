@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use muninn_agent::{Agent, CancellationToken, Event, Stop};
-use muninn_ai::{Message, Provider, Request};
+use muninn_ai::{Message, Provider};
 use muninn_vault::{Journal, Vault};
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -180,15 +180,6 @@ fn recheck(unread: &[String]) -> Message {
          lines from them. Read them with read_note now, then give your complete answer again, corrected if needed. \
          The user sees only this new answer, so do not refer to the earlier one or to this check."
     ))
-}
-
-/// One tiny completion to prove the endpoint, key, and model work.
-pub async fn check_model(settings: &Settings) -> Result<String> {
-    let provider = crate::provider::connect(settings)?;
-    let messages = [Message::user("ping")];
-    let request = Request { system: "Reply with the single word OK.", messages: &messages, tools: &[] };
-    let reply = provider.complete(request, &mut |_| {}).await?;
-    Ok(reply.content)
 }
 
 /// The most telling argument of a tool call (path, query, or change id), for display.

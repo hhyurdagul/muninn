@@ -13,14 +13,14 @@ muninn ask "save: ravens remember faces"     # one prompt in, one result out
 echo "what did I decide about storage?" | muninn ask
 muninn model                # current provider and model
 muninn model anthropic      # list a provider's models
-muninn model anthropic claude-sonnet-5-5     # switch (after a test call)
+muninn model anthropic claude-sonnet-5-5     # switch
 muninn memory               # print MEMORY.md, the short memory agents load at startup
 muninn log                  # changes Muninn made
 muninn undo [change-id]     # revert the latest (or a given) change
 muninn mcp                  # MCP server over stdio, started by your agent
 ```
 
-Onboarding asks for the vault folder, then a provider, API key, and model (see [Models](#models)), makes one test call, offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules in conversation. That includes whether Muninn should get rules of its own.
+Onboarding asks for the vault folder, then a provider, API key, and model (see [Models](#models)), offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules in conversation. That includes whether Muninn should get rules of its own.
 
 | Where | Path |
 |---|---|
@@ -44,7 +44,7 @@ Muninn reads, searches, and writes notes inside the vault only, never outside th
 | Gemini | Google's OpenAI-compatible endpoint | `GEMINI_API_KEY` |
 | Custom | any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM); key optional | — |
 
-Switch with `/model` in the TUI, which lists the provider's models as you type, or with `muninn model <provider> <model>` (add `--endpoint <url>` for a custom one). Every switch is checked with a test call before it is saved. Keys are kept per provider, so switching back doesn't ask again. Talking to Anthropic directly needs an API key from the [Claude Console](https://console.anthropic.com); a Claude Pro or Max subscription can't be used in third-party apps. Gemini's free tier is tight for an agent: Gemini 3.x Flash allows 5 requests a minute and 20 a day, and one Muninn turn makes 3 to 8 requests.
+Switch with `/model` in the TUI, which lists the provider's models as you type, or with `muninn model <provider> <model>` (add `--endpoint <url>` for a custom one). Switching sends nothing to the model; your first message shows whether the key and model work. Keys are kept per provider, so switching back doesn't ask again. Talking to Anthropic directly needs an API key from the [Claude Console](https://console.anthropic.com); a Claude Pro or Max subscription can't be used in third-party apps. Gemini's free tier is tight for an agent: Gemini 3.x Flash allows 5 requests a minute and 20 a day, and one Muninn turn makes 3 to 8 requests.
 
 ### Memory
 

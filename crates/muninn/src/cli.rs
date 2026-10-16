@@ -7,8 +7,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use muninn_core::{
-    check_model, list_models, CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal,
-    ProviderKind, Review, Reviewer, Settings, Stop, Surface, Update,
+    list_models, CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal, ProviderKind,
+    Review, Reviewer, Settings, Stop, Surface, Update,
 };
 use muninn_vault::{Entry, Journal, Undo, Vault};
 
@@ -120,8 +120,8 @@ fn open_vault() -> Result<(Vault, Journal)> {
     Ok((settings.open_vault()?, Journal::open(paths.journal_file())))
 }
 
-/// Shows the current model, lists a provider's models, or switches to one
-/// after a successful test call.
+/// Shows the current model, lists a provider's models, or switches to one.
+/// Nothing is sent to the model; the first message shows whether it works.
 pub async fn model(provider: Option<String>, model: Option<String>, endpoint: Option<String>) -> Result<i32> {
     let paths = Paths::from_env();
     let mut settings = Settings::load(&paths)?;
@@ -166,7 +166,6 @@ pub async fn model(provider: Option<String>, model: Option<String>, endpoint: Op
         return Ok(0);
     };
     settings.model = model;
-    check_model(&settings).await.context("test call failed; settings unchanged")?;
     settings.save(&paths)?;
     println!("Now using {} · {}", kind.id(), settings.model);
     Ok(0)

@@ -100,7 +100,7 @@ impl Provider for OpenAiCompatible {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            bail!("model endpoint returned {status}: {}", truncate(&text, 1000));
+            bail!("model endpoint returned {status}: {}", error_text(&text));
         }
 
         let mut parser = SseParser::default();
@@ -207,7 +207,7 @@ pub(crate) async fn model_ids(response: reqwest::Response) -> Result<Vec<String>
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        bail!("model list returned {status}: {}", truncate(&text, 500));
+        bail!("model list returned {status}: {}", error_text(&text));
     }
     let body: Value = serde_json::from_str(&text).context("model list is not JSON")?;
     let mut ids: Vec<String> = body["data"]
@@ -219,6 +219,17 @@ pub(crate) async fn model_ids(response: reqwest::Response) -> Result<Vec<String>
         .collect();
     ids.sort();
     Ok(ids)
+}
+
+/// The provider's own message from an error body (`{"error":{"message":…}}`,
+/// or Gemini's list of those), else the start of the raw text.
+pub(crate) fn error_text(text: &str) -> String {
+    let body: Value = serde_json::from_str(text).unwrap_or_default();
+    let error = body.get(0).unwrap_or(&body);
+    match error.pointer("/error/message").and_then(Value::as_str) {
+        Some(message) => message.trim().to_string(),
+        None => truncate(text, 1000).to_string(),
+    }
 }
 
 pub(crate) fn truncate(text: &str, max: usize) -> &str {
@@ -267,6 +278,17 @@ mod tests {
         let mut acc = Accumulator::default();
         acc.apply(&json!({"choices":[{"delta":{"content":"Here is"},"finish_reason":"length"}]})).unwrap();
         assert!(acc.finish().unwrap_err().to_string().contains("output limit"));
+    }
+
+    #[test]
+    fn error_bodies_show_the_providers_message() {
+        let openrouter = r#"{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402,"metadata":{"x":1}}}"#;
+        assert_eq!(
+            error_text(openrouter),
+            "Insufficient credits. Add more using https://openrouter.ai/settings/credits"
+        );
+        assert_eq!(error_text(r#"[{"error":{"code":503,"message":"High demand."}}]"#), "High demand.");
+        assert_eq!(error_text("Bad Gateway"), "Bad Gateway");
     }
 
     #[test]

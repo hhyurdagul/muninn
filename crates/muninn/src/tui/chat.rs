@@ -188,7 +188,7 @@ impl Chat {
                 self.conversation = Some(*conversation);
                 return self.quit_after_turn;
             }
-            event @ (AppEvent::ModelChecked(_) | AppEvent::Models(_)) => {
+            event @ AppEvent::Models(_) => {
                 if let Some(choice) = &mut self.model_choice {
                     let outcome = choice.on_event(event);
                     self.model_outcome(outcome);
