@@ -28,6 +28,13 @@ impl Picker {
         self.state.selected()
     }
 
+    /// Highlights item `index` (clamped to the list).
+    pub fn select(&mut self, index: usize) {
+        if !self.items.is_empty() {
+            self.state.select(Some(index.min(self.items.len() - 1)));
+        }
+    }
+
     /// Handles Up/Down (and Space to toggle a checkbox); returns whether the
     /// key was used.
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {

@@ -27,6 +27,18 @@ enum Command {
     /// Print MEMORY.md, the short memory about you that agents load when they
     /// start (for agents that take it from a session-start hook).
     Memory,
+    /// Show the provider and model, list a provider's models, or switch:
+    /// `muninn model anthropic claude-sonnet-5-5`. Keys come from the
+    /// settings or the provider's usual environment variable.
+    Model {
+        /// openrouter, anthropic, openai, gemini, or custom.
+        provider: Option<String>,
+        /// The model id; without it, the provider's models are listed.
+        model: Option<String>,
+        /// Base URL of a custom OpenAI-compatible endpoint.
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
     /// Serve MCP over stdio (your coding agent starts this).
     Mcp,
     /// Restart onboarding: vault path, model, agent integration, vault rules.
@@ -51,6 +63,7 @@ async fn main() {
         Some(Command::Init) => tui::run(tui::Start::Onboarding).await.map(|_| 0),
         Some(Command::Ask { prompt }) => cli::ask(prompt).await,
         Some(Command::Memory) => cli::memory(),
+        Some(Command::Model { provider, model, endpoint }) => cli::model(provider, model, endpoint).await,
         Some(Command::Mcp) => mcp::serve().await.map(|_| 0),
         Some(Command::Undo { id }) => cli::undo(id.as_deref()),
         Some(Command::Log { limit }) => cli::log(limit),

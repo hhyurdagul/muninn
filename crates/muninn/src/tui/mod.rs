@@ -2,6 +2,7 @@
 
 mod chat;
 mod commands;
+mod model;
 mod setup;
 
 use std::path::Path;
@@ -28,6 +29,7 @@ pub(crate) enum AppEvent {
     Review(Proposal, oneshot::Sender<Decision>),
     TurnDone(Box<Conversation>, Result<TurnResult, String>),
     ModelChecked(Result<String, String>),
+    Models(Result<Vec<String>, String>),
 }
 
 pub(crate) type Tx = mpsc::UnboundedSender<AppEvent>;

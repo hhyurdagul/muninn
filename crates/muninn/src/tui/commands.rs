@@ -7,6 +7,7 @@ pub enum Action {
     Resume,
     Log,
     Undo,
+    Model,
     Init,
     Quit,
 }
@@ -29,6 +30,7 @@ pub const COMMANDS: &[Command] = &[
         about: "Revert the latest change, or the one with this id",
         action: Action::Undo,
     },
+    Command { name: "model", args: "", about: "Switch the provider or model", action: Action::Model },
     Command { name: "init", args: "", about: "Redo setup: vault, model, agents, vault rules", action: Action::Init },
     Command { name: "quit", args: "", about: "Leave Muninn (also /exit)", action: Action::Quit },
 ];

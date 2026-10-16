@@ -1,6 +1,7 @@
 //! A scripted OpenAI-compatible server for tests and offline demos.
 //! Each `/chat/completions` request is answered by streaming one assistant
-//! message chosen by a handler that sees the request body.
+//! message chosen by a handler that sees the request body; `GET /models`
+//! lists two models.
 
 use std::sync::Arc;
 
@@ -78,6 +79,15 @@ async fn serve(mut stream: TcpStream, handler: &Handler, log: &Mutex<Vec<Value>>
         }
     };
     let headers = String::from_utf8_lossy(&buffer[..header_end]).to_lowercase();
+    if headers.starts_with("get ") && headers.lines().next().is_some_and(|l| l.contains("/models")) {
+        let body = json!({ "data": [{ "id": "mock" }, { "id": "mock-large" }] }).to_string();
+        let head = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(format!("{head}{body}").as_bytes()).await?;
+        return stream.shutdown().await;
+    }
     let length: usize = headers
         .lines()
         .find_map(|l| l.strip_prefix("content-length:"))

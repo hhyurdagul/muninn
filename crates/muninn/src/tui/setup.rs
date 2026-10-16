@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use muninn_core::{check_model, Paths, Settings};
+use muninn_core::{Paths, Settings};
 use muninn_tui::ratatui::crossterm::event::{Event, KeyCode};
 use muninn_tui::ratatui::layout::{Constraint, Layout};
 use muninn_tui::ratatui::style::{Color, Modifier, Style};
@@ -12,6 +12,7 @@ use muninn_tui::ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph,
 use muninn_tui::ratatui::Frame;
 use muninn_tui::{centered, Input, Picker};
 
+use super::model::{ModelChoice, Outcome};
 use super::{is_ctrl, tilde, AppEvent, Tx};
 use crate::integrations::{self, Integration};
 
@@ -33,10 +34,7 @@ pub struct Setup {
     settings: Settings,
     step: Step,
     vault: Input,
-    /// Base URL, model, API key.
-    fields: [Input; 3],
-    focus: usize,
-    checking: bool,
+    model: ModelChoice,
     message: Option<(String, bool)>,
     agents: Vec<Integration>,
     picker: Picker,
@@ -51,19 +49,12 @@ impl Setup {
             .as_deref()
             .map(tilde)
             .unwrap_or_else(|| std::env::current_dir().map(|d| tilde(&d)).unwrap_or_default());
-        let fields = [
-            Input::with_text(settings.base_url.clone()),
-            Input::with_text(settings.model.clone()),
-            Input::with_text(settings.api_key.clone().unwrap_or_default()).masked(),
-        ];
         Self {
             paths,
+            model: ModelChoice::new(settings.clone()),
             settings,
             step: Step::Vault,
             vault: Input::with_text(vault),
-            fields,
-            focus: 2,
-            checking: false,
             message: None,
             agents: Vec::new(),
             picker: Picker::new(Vec::new()),
@@ -77,7 +68,7 @@ impl Setup {
             Event::Paste(text) => {
                 match self.step {
                     Step::Vault => self.vault.insert_str(text.trim()),
-                    Step::Model => self.fields[self.focus].insert_str(text.trim()),
+                    Step::Model => self.model.handle_paste(&text),
                     Step::Agents => {}
                 }
                 return Action::None;
@@ -87,9 +78,6 @@ impl Setup {
         if is_ctrl(&key, 'c') {
             return Action::Quit;
         }
-        if self.checking {
-            return Action::None;
-        }
         match self.step {
             Step::Vault => match key.code {
                 KeyCode::Enter => self.submit_vault(),
@@ -97,15 +85,10 @@ impl Setup {
                     self.vault.handle_key(key);
                 }
             },
-            Step::Model => match key.code {
-                KeyCode::Enter => self.submit_model(tx),
-                KeyCode::Esc => self.go(Step::Vault),
-                KeyCode::Tab | KeyCode::Down => self.focus = (self.focus + 1) % 3,
-                KeyCode::BackTab | KeyCode::Up => self.focus = (self.focus + 2) % 3,
-                _ => {
-                    self.fields[self.focus].handle_key(key);
-                }
-            },
+            Step::Model => {
+                let outcome = self.model.handle_key(key, tx);
+                self.model_outcome(outcome);
+            }
             Step::Agents => match key.code {
                 KeyCode::Enter if self.installed || self.agents.is_empty() => {
                     return Action::Done(self.settings.clone());
@@ -121,18 +104,30 @@ impl Setup {
     }
 
     pub fn on_event(&mut self, event: AppEvent) {
-        let AppEvent::ModelChecked(result) = event else { return };
-        self.checking = false;
-        match result {
-            Ok(_) => match self.settings.save(&self.paths) {
-                Ok(()) => self.go(Step::Agents),
-                Err(e) => self.message = Some((format!("Could not save settings: {e:#}"), true)),
-            },
-            Err(e) => self.message = Some((format!("Test call failed: {e}"), true)),
+        if self.step == Step::Model {
+            let outcome = self.model.on_event(event);
+            self.model_outcome(outcome);
+        }
+    }
+
+    fn model_outcome(&mut self, outcome: Outcome) {
+        match outcome {
+            Outcome::Pending => {}
+            Outcome::Cancel => self.go(Step::Vault),
+            Outcome::Done(settings) => {
+                self.settings = settings;
+                match self.settings.save(&self.paths) {
+                    Ok(()) => self.go(Step::Agents),
+                    Err(e) => self.message = Some((format!("Could not save settings: {e:#}"), true)),
+                }
+            }
         }
     }
 
     fn go(&mut self, step: Step) {
+        if step == Step::Model {
+            self.model = ModelChoice::new(self.settings.clone());
+        }
         if step == Step::Agents {
             self.agents = integrations::detect();
             let items = self
@@ -167,28 +162,6 @@ impl Setup {
         self.go(Step::Model);
     }
 
-    fn submit_model(&mut self, tx: &Tx) {
-        let [base_url, model, key] = &self.fields;
-        if model.text().trim().is_empty() || base_url.text().trim().is_empty() {
-            self.message = Some(("Endpoint and model are required.".into(), true));
-            return;
-        }
-        self.settings.base_url = base_url.text().trim().to_string();
-        self.settings.model = model.text().trim().to_string();
-        self.settings.api_key = Some(key.text().trim().to_string()).filter(|k| !k.is_empty());
-        if self.settings.api_key().is_none() {
-            self.message = Some(("An API key is required.".into(), true));
-            return;
-        }
-        self.checking = true;
-        self.message = Some(("Making a test call…".into(), false));
-        let (settings, tx) = (self.settings.clone(), tx.clone());
-        tokio::spawn(async move {
-            let result = check_model(&settings).await.map_err(|e| format!("{e:#}"));
-            let _ = tx.send(AppEvent::ModelChecked(result));
-        });
-    }
-
     fn install_agents(&mut self) {
         let checked = self.picker.checked.clone().unwrap_or_default();
         let mut report = Vec::new();
@@ -207,7 +180,7 @@ impl Setup {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        let area = centered(frame.area(), 84, 22);
+        let area = centered(frame.area(), 84, 26);
         frame.render_widget(Clear, area);
         let (number, title) = match self.step {
             Step::Vault => (1, "Where is your vault?"),
@@ -230,7 +203,7 @@ impl Setup {
             .title_bottom(Span::styled(
                 match self.step {
                     Step::Vault => " Enter continue · Ctrl+C quit ",
-                    Step::Model => " Tab next field · Enter test & continue · Esc back ",
+                    Step::Model => self.model.hints(),
                     Step::Agents => " Space toggle · Enter continue · Esc back ",
                 },
                 Style::default().fg(Color::DarkGray),
@@ -246,8 +219,8 @@ impl Setup {
 An empty or new folder starts a vault from zero."
             }
             Step::Model => {
-                "Muninn talks to any OpenAI-compatible endpoint. The key is stored in Muninn's \
-own settings, never in the vault."
+                "Pick a provider and a model. Keys are stored in Muninn's own settings, never in \
+the vault; the provider's usual environment variable works too."
             }
             Step::Agents => {
                 "Muninn can register `muninn mcp` with the agents installed here, so they can \
@@ -259,20 +232,8 @@ save to and ask your vault from any project."
         match self.step {
             Step::Vault => self.vault.render(frame, field_area(body, 0), field_block("Vault folder", true)),
             Step::Model => {
-                for (i, label) in ["Endpoint", "Model", "API key"].into_iter().enumerate() {
-                    let block = field_block(label, i == self.focus);
-                    let area = field_area(body, i);
-                    if i == self.focus {
-                        self.fields[i].render(frame, area, block);
-                    } else {
-                        let text = if self.fields[i].masked {
-                            "•".repeat(self.fields[i].text().chars().count())
-                        } else {
-                            self.fields[i].text().to_string()
-                        };
-                        frame.render_widget(Paragraph::new(text).block(block), area);
-                    }
-                }
+                let area = muninn_tui::ratatui::layout::Rect { height: body.height + message.height, ..body };
+                return self.model.draw(frame, area);
             }
             Step::Agents if self.agents.is_empty() => {
                 frame.render_widget(

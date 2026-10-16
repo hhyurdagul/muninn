@@ -1,4 +1,4 @@
-//! One-shot commands: `ask`, `memory`, `undo`, `log`.
+//! One-shot commands: `ask`, `memory`, `model`, `undo`, `log`.
 
 use std::collections::HashSet;
 use std::io::{BufRead, IsTerminal, Read, Write};
@@ -7,8 +7,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use muninn_core::{
-    CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal, Review, Reviewer, Settings,
-    Stop, Surface, Update,
+    check_model, list_models, CancellationToken, Conversation, Decision, Kind, Librarian, NoteKind, Paths, Proposal,
+    ProviderKind, Review, Reviewer, Settings, Stop, Surface, Update,
 };
 use muninn_vault::{Entry, Journal, Undo, Vault};
 
@@ -109,6 +109,36 @@ fn open_vault() -> Result<(Vault, Journal)> {
     let paths = Paths::from_env();
     let settings = Settings::load(&paths)?;
     Ok((settings.open_vault()?, Journal::open(paths.journal_file())))
+}
+
+/// Shows the current model, lists a provider's models, or switches to one
+/// after a successful test call.
+pub async fn model(provider: Option<String>, model: Option<String>, endpoint: Option<String>) -> Result<i32> {
+    let paths = Paths::from_env();
+    let mut settings = Settings::load(&paths)?;
+    let Some(provider) = provider else {
+        println!("{} · {}  ({})", settings.provider.id(), settings.model, settings.endpoint());
+        return Ok(0);
+    };
+    let kind = ProviderKind::from_id(&provider).with_context(|| {
+        let ids: Vec<_> = ProviderKind::ALL.iter().map(|k| k.id()).collect();
+        format!("unknown provider `{provider}`; choose one of {}", ids.join(", "))
+    })?;
+    settings.provider = kind;
+    if let Some(endpoint) = endpoint {
+        settings.base_url = endpoint.trim_end_matches('/').to_string();
+    }
+    let Some(model) = model else {
+        for id in list_models(&settings).await? {
+            println!("{id}");
+        }
+        return Ok(0);
+    };
+    settings.model = model;
+    check_model(&settings).await.context("test call failed; settings unchanged")?;
+    settings.save(&paths)?;
+    println!("Now using {} · {}", kind.id(), settings.model);
+    Ok(0)
 }
 
 /// Prints MEMORY.md (nothing when it is empty), e.g. for a session-start hook.

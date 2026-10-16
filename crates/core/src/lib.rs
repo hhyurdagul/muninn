@@ -5,13 +5,15 @@ mod config;
 mod conversation;
 mod librarian;
 mod prompt;
+mod provider;
 mod tools;
 
-pub use config::{Paths, Settings, DEFAULT_BASE_URL, DEFAULT_MODEL};
+pub use config::{Paths, Settings, DEFAULT_MODEL};
 pub use conversation::{Conversation, Kind, NoteEvent, NoteKind, Proposal, Store, Surface};
 pub use librarian::{check_model, tool_detail, Decision, Librarian, Review, Reviewer, TurnResult, Update};
 pub use muninn_agent::{CancellationToken, Stop};
 pub use prompt::{memory, MEMORY_LIMIT};
+pub use provider::{list_models, ProviderKind};
 
 pub use muninn_ai::{Message, Role};
 fn new_id(prefix: &str) -> String {

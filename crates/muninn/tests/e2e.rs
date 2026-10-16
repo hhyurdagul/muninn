@@ -45,6 +45,10 @@ impl Env {
             .env("MUNINN_DATA_DIR", self.dir.path().join("data"))
             .env("HOME", self.dir.path())
             .env_remove("MUNINN_API_KEY")
+            .env_remove("OPENROUTER_API_KEY")
+            .env_remove("OPENAI_API_KEY")
+            .env_remove("GEMINI_API_KEY")
+            .env_remove("ANTHROPIC_API_KEY")
             .stdin(Stdio::null());
         cmd
     }
@@ -333,4 +337,27 @@ async fn agents_get_memory_at_startup_and_only_a_reviewed_change_updates_it() {
     let (text, _) = mcp.say("Remember that I use Nix flakes", None).await;
     assert!(text.contains("Pending change"), "{text}");
     assert_eq!(fs::read_to_string(env.vault("MEMORY.md")).unwrap(), "# About the user\n- Prefers Rust\n");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn model_switches_only_after_a_test_call_and_keeps_keys_per_provider() {
+    let server = MockServer::scripted(vec![Message::assistant("OK")]).await.unwrap();
+    let env = Env::new(&server.url);
+    let config = || fs::read_to_string(env.dir.path().join("config/config.toml")).unwrap();
+
+    let (code, out, _) = env.run(&["model"]).await;
+    assert_eq!(code, 0);
+    assert!(out.starts_with("custom · mock"), "single-key settings migrate to `custom`: {out}");
+
+    let (code, _, err) = env.run(&["model", "anthropic", "claude-sonnet-5-5"]).await;
+    assert_eq!(code, 1);
+    assert!(err.contains("no API key for Anthropic"), "{err}");
+    assert!(config().contains("model = \"mock\""), "a failed switch changes nothing");
+
+    let (code, out, err) = env.run(&["model", "custom", "mock-2", "--endpoint", &server.url]).await;
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("custom · mock-2"));
+    assert!(config().contains("model = \"mock-2\""));
+    assert!(config().contains("custom = \"test\""), "the key stays with its provider");
+    assert_eq!(server.requests().last().unwrap()["model"], "mock-2");
 }

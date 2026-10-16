@@ -19,6 +19,7 @@ use muninn_tui::{centered, diff_lines, ChatLog, Input, Item, Picker};
 use tokio::sync::oneshot;
 
 use super::commands::{self, Parsed, COMMANDS};
+use super::model::{self, ModelChoice, Outcome};
 use super::{is_ctrl, tilde, AppEvent, Tx};
 use crate::cli;
 
@@ -42,8 +43,11 @@ struct Approval {
 
 pub struct Chat {
     librarian: Arc<Librarian>,
+    paths: Paths,
     store: Store,
+    /// Provider and model, for the header.
     model: String,
+    model_choice: Option<ModelChoice>,
     tx: Tx,
     /// `None` while a turn owns it.
     conversation: Option<Conversation>,
@@ -73,8 +77,10 @@ impl Chat {
         }
         let mut chat = Self {
             librarian,
+            paths: paths.clone(),
             store: Store::new(paths.conversations_dir()),
-            model: settings.model.clone(),
+            model: model_label(settings),
+            model_choice: None,
             tx,
             conversation: Some(conversation),
             title: String::new(),
@@ -175,12 +181,49 @@ impl Chat {
                 self.conversation = Some(*conversation);
                 return self.quit_after_turn;
             }
-            AppEvent::ModelChecked(_) => {}
+            event @ (AppEvent::ModelChecked(_) | AppEvent::Models(_)) => {
+                if let Some(choice) = &mut self.model_choice {
+                    let outcome = choice.on_event(event);
+                    self.model_outcome(outcome);
+                }
+            }
         }
         false
     }
 
+    fn model_outcome(&mut self, outcome: Outcome) {
+        match outcome {
+            Outcome::Pending => {}
+            Outcome::Cancel => self.model_choice = None,
+            Outcome::Done(settings) => {
+                self.model_choice = None;
+                let switched =
+                    settings.save(&self.paths).and_then(|()| Librarian::from_settings(&settings, &self.paths));
+                match switched {
+                    Ok(librarian) => {
+                        self.librarian = Arc::new(librarian);
+                        self.model = model_label(&settings);
+                        self.info(format!("Now using `{}`.", self.model));
+                    }
+                    Err(e) => self.error(format!("Could not switch the model: {e:#}")),
+                }
+            }
+        }
+    }
+
     pub fn handle(&mut self, event: Event) -> Action {
+        if let Some(choice) = &mut self.model_choice {
+            match event {
+                Event::Paste(text) => choice.handle_paste(&text),
+                Event::Key(key) if is_ctrl(&key, 'c') => self.model_choice = None,
+                Event::Key(key) => {
+                    let outcome = choice.handle_key(key, &self.tx);
+                    self.model_outcome(outcome);
+                }
+                _ => {}
+            }
+            return Action::None;
+        }
         let key = match event {
             Event::Paste(text) if self.approval.is_none() && self.history.is_none() => {
                 self.input.insert_str(&text);
@@ -291,7 +334,7 @@ impl Chat {
             C::Quit => return Action::Quit,
             C::Help => self.info(help()),
             C::Log => self.show_log(),
-            C::New | C::Resume | C::Undo | C::Init if busy => {
+            C::New | C::Resume | C::Undo | C::Model | C::Init if busy => {
                 self.info("Muninn is still working; wait for it or press `Esc` to cancel.")
             }
             C::New => {
@@ -300,6 +343,10 @@ impl Chat {
             }
             C::Resume => self.open_history(),
             C::Undo => self.undo(args),
+            C::Model => match Settings::load(&self.paths) {
+                Ok(settings) => self.model_choice = Some(ModelChoice::new(settings)),
+                Err(e) => self.error(format!("Could not read the settings: {e:#}")),
+            },
             C::Init => return Action::Setup,
         }
         Action::None
@@ -478,6 +525,20 @@ impl Chat {
                 picker.render(frame, popup, block);
             }
         }
+        if let Some(choice) = &mut self.model_choice {
+            let popup = centered(area, area.width.saturating_sub(10).min(90), area.height.saturating_sub(6).min(26));
+            frame.render_widget(Clear, popup);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(ACCENT))
+                .padding(Padding::horizontal(1))
+                .title(model::title("Choose a model"))
+                .title_bottom(Span::styled(choice.hints(), dim()));
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            choice.draw(frame, inner);
+        }
     }
 
     fn draw_header(&self, frame: &mut Frame, area: Rect) {
@@ -524,7 +585,7 @@ impl Chat {
     /// The slash-command list, just above the input.
     fn draw_completions(&self, frame: &mut Frame, input: Rect) {
         let matches = commands::completions(self.input.text());
-        if matches.is_empty() || self.approval.is_some() || self.history.is_some() {
+        if matches.is_empty() || self.approval.is_some() || self.history.is_some() || self.model_choice.is_some() {
             return;
         }
         let choice = self.command_choice.min(matches.len() - 1);
@@ -604,6 +665,10 @@ fn draw_approval(frame: &mut Frame, approval: &Approval) {
     ];
     lines.extend(diff_lines(&proposal.diff()));
     frame.render_widget(Paragraph::new(lines).block(block).scroll((approval.scroll, 0)), popup);
+}
+
+fn model_label(settings: &Settings) -> String {
+    format!("{} · {}", settings.provider.id(), settings.model)
 }
 
 fn dim() -> Style {

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use muninn_agent::{Agent, CancellationToken, Event, Stop};
-use muninn_ai::{Message, OpenAiCompatible, Provider, Request};
+use muninn_ai::{Message, Provider, Request};
 use muninn_vault::{Journal, Vault};
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -71,9 +71,7 @@ impl Librarian {
     /// from `paths` before every turn so edits apply without a restart.
     pub fn from_settings(settings: &Settings, paths: &Paths) -> Result<Self> {
         let vault = settings.open_vault()?;
-        let key = settings.api_key().context("no API key configured; run `muninn init`")?;
-        let provider = OpenAiCompatible::new(&settings.base_url, &key, &settings.model);
-        let librarian = Self::new(Arc::new(provider), vault, Journal::open(paths.journal_file()));
+        let librarian = Self::new(crate::provider::connect(settings)?, vault, Journal::open(paths.journal_file()));
         Ok(Self { paths: Some(paths.clone()), ..librarian })
     }
 
@@ -144,8 +142,7 @@ impl Librarian {
 
 /// One tiny completion to prove the endpoint, key, and model work.
 pub async fn check_model(settings: &Settings) -> Result<String> {
-    let key = settings.api_key().context("no API key")?;
-    let provider = OpenAiCompatible::new(&settings.base_url, &key, &settings.model);
+    let provider = crate::provider::connect(settings)?;
     let messages = [Message::user("ping")];
     let request = Request { system: "Reply with the single word OK.", messages: &messages, tools: &[] };
     let reply = provider.complete(request, &mut |_| {}).await?;

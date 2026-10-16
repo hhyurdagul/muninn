@@ -9,25 +9,40 @@ muninn                      # TUI conversation in your vault (onboarding on firs
 muninn init                 # restart onboarding
 muninn ask "save: ravens remember faces"     # one prompt in, one result out
 echo "what did I decide about storage?" | muninn ask
+muninn model                # current provider and model
+muninn model anthropic      # list a provider's models
+muninn model anthropic claude-sonnet-5-5     # switch (after a test call)
 muninn memory               # print MEMORY.md, the short memory agents load at startup
 muninn log                  # changes Muninn made
 muninn undo [change-id]     # revert the latest (or a given) change
 muninn mcp                  # MCP server over stdio, started by your agent
 ```
 
-Onboarding asks for the vault folder and an OpenAI-compatible endpoint, model, and API key (OpenRouter by default), makes one test call, offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules in conversation. That includes whether Muninn should get rules of its own.
+Onboarding asks for the vault folder, then a provider, API key, and model (see [Models](#models)), makes one test call, offers to register `muninn mcp` with Claude Code, Codex, and omp, and then works out the vault's rules in conversation. That includes whether Muninn should get rules of its own.
 
 | Where | Path |
 |---|---|
-| Settings (vault, endpoint, model, key, ignore patterns) | `~/.config/muninn/config.toml` (`MUNINN_CONFIG_DIR`) |
+| Settings (vault, provider, model, keys, ignore patterns) | `~/.config/muninn/config.toml` (`MUNINN_CONFIG_DIR`) |
 | Conversations, change log | `~/.local/share/muninn/` (`MUNINN_DATA_DIR`) |
-| API key override | `MUNINN_API_KEY` |
+| API keys from the environment | `MUNINN_API_KEY` (any provider), else the stored key, else the provider's own variable |
 
 Muninn reads, searches, and writes notes inside the vault only, never outside the root. It has no shell. When the vault's rules require review, changes are shown first: in the TUI as an approve dialog, in `muninn ask` as a terminal prompt, and over MCP as a pending diff that the calling agent approves by replying in the same conversation (`conversation_id`).
 
 ### Vault rules
 
 `AGENTS.md` at the vault root holds the rules every agent in the vault follows. If Muninn needs rules that other agents shouldn't follow (or the other way round), put those in `MUNINN.md` at the root. Muninn follows both, and `MUNINN.md` wins where they disagree. Onboarding asks whether you want the split. Muninn changes an existing `AGENTS.md` or root `MUNINN.md` only after review.
+
+### Models
+
+| Provider | How Muninn talks to it | Key variable |
+|---|---|---|
+| OpenRouter (default) | OpenAI format | `OPENROUTER_API_KEY` |
+| Anthropic | Anthropic's Messages API, with prompt caching | `ANTHROPIC_API_KEY` |
+| OpenAI | OpenAI format | `OPENAI_API_KEY` |
+| Gemini | Google's OpenAI-compatible endpoint | `GEMINI_API_KEY` |
+| Custom | any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM); key optional | — |
+
+Switch with `/model` in the TUI, which lists the provider's models as you type, or with `muninn model <provider> <model>` (add `--endpoint <url>` for a custom one). Every switch is checked with a test call before it is saved. Keys are kept per provider, so switching back doesn't ask again. Talking to Anthropic directly needs an API key from the [Claude Console](https://console.anthropic.com); a Claude Pro or Max subscription can't be used in third-party apps.
 
 ### Memory
 
