@@ -105,7 +105,7 @@ graph LR
 
 - **New vault tool:** add a `Kind` variant in `core/src/tools.rs`, its `spec()` entry, and its `call()` branch. Register it in `toolset`. Writes must go through `VaultTool::save` or `TurnContext::write`. Mention the tool in `prompt.rs` if the model needs guidance.
 - **New provider or wire format:** implement `muninn_ai::Provider` in `muninn-ai`, then choose it in `Librarian::from_settings`. Add any new settings field to `Settings` (with a serde default) and to onboarding (`tui/setup.rs`).
-- **New coding-agent integration:** add an `Agent` variant in `muninn/src/integrations.rs` (`name`, `binary`, `config`, `is_installed`, and its arm in `install`). Prefer the agent's own CLI (`<agent> mcp add`) over editing its config files.
+- **New coding-agent integration:** add an `Agent` variant in `muninn/src/integrations.rs` (`name`, `binary`, `config` (honour the agent's config-dir variable), `registered`, and its arm in `install`, which replaces an existing entry). Prefer the agent's own CLI (`<agent> mcp add`) over editing its config files.
 - **Prompt behavior:** edit `core/src/prompt.rs`. Surface-specific instructions go in `surface_text`, and the onboarding flow in `ONBOARDING`.
 - **TUI:** generic widgets belong in `muninn-tui`. Screens and state belong in `muninn/src/tui/`. Background work reports back to the UI loop through `AppEvent` on the `Tx` channel.
 - **Slash command:** add an `Action` variant and a `COMMANDS` entry in `muninn/src/tui/commands.rs`, then its arm in `Chat::run` (`tui/chat.rs`). The `/help` table and the completion list come from `COMMANDS`. Commands that touch the conversation or the vault must refuse while a turn runs.
