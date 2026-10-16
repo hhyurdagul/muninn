@@ -14,7 +14,7 @@ use muninn_tui::{centered, Input, Picker};
 
 use super::model::{ModelChoice, Outcome};
 use super::{is_ctrl, tilde, AppEvent, Tx};
-use crate::integrations::{self, Integration};
+use crate::integrations::{self, Integration, Status};
 
 pub enum Action {
     None,
@@ -133,9 +133,13 @@ impl Setup {
             let items = self
                 .agents
                 .iter()
-                .map(|i| format!("{}{}", i.agent.name(), if i.installed { "  (already set up)" } else { "" }))
+                .map(|i| match &i.status {
+                    Status::Missing => i.agent.name().to_string(),
+                    Status::Current => format!("{}  (already set up)", i.agent.name()),
+                    Status::Stale(old) => format!("{}  (set up with another muninn: {old})", i.agent.name()),
+                })
                 .collect();
-            let checks = self.agents.iter().map(|i| !i.installed).collect();
+            let checks = self.agents.iter().map(|i| i.status != Status::Current).collect();
             self.picker = Picker::new(items).with_checks(checks);
             self.installed = false;
         }
