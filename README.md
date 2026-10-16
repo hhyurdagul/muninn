@@ -134,3 +134,7 @@ graph LR
   agent --> ai[muninn-ai]
   core --> ai
 ```
+
+## License
+
+Apache License 2.0; see [LICENSE](LICENSE). Use it, copy it, and change it freely. If you redistribute Muninn or build on it, keep the [NOTICE](NOTICE) file, which credits this project.

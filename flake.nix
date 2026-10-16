@@ -20,6 +20,7 @@
           meta = {
             description = "Your knowledge vault, reachable from anywhere";
             mainProgram = "muninn";
+            license = pkgs.lib.licenses.asl20;
           };
         };
       in

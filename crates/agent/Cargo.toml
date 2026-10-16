@@ -3,6 +3,8 @@ name = "muninn-agent"
 description = "Generic tool-calling agent loop on top of muninn-ai"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true

@@ -3,6 +3,8 @@ name = "muninn-mcp"
 description = "Minimal Model Context Protocol server (tools over stdio JSON-RPC)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
