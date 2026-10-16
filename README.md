@@ -46,7 +46,7 @@ Muninn reads, searches, and writes notes inside the vault only, never outside th
 | Gemini | Google's OpenAI-compatible endpoint | `GEMINI_API_KEY` |
 | Custom | any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM); key optional | — |
 
-Switch with `/model` in the TUI, which lists the provider's models as you type, or with `muninn model <provider> <model>` (add `--endpoint <url>` for a custom one). Every switch is checked with a test call before it is saved. Keys are kept per provider, so switching back doesn't ask again. Talking to Anthropic directly needs an API key from the [Claude Console](https://console.anthropic.com); a Claude Pro or Max subscription can't be used in third-party apps.
+Switch with `/model` in the TUI, which lists the provider's models as you type, or with `muninn model <provider> <model>` (add `--endpoint <url>` for a custom one). Every switch is checked with a test call before it is saved. Keys are kept per provider, so switching back doesn't ask again. Talking to Anthropic directly needs an API key from the [Claude Console](https://console.anthropic.com); a Claude Pro or Max subscription can't be used in third-party apps. Gemini's free tier is tight for an agent: Gemini 3.x Flash allows 5 requests a minute and 20 a day, and one Muninn turn makes 3 to 8 requests.
 
 ### Memory
 
