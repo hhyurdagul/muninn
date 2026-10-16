@@ -1,6 +1,7 @@
 name: Release
 
 # Runs only when a version tag is pushed: git tag v0.1.0 && git push origin v0.1.0
+# A tag with a suffix (v0.1.0-rc.1) is published as a pre-release.
 on:
   push:
     tags: ["v*"]
@@ -50,3 +51,4 @@ jobs:
         with:
           files: muninn-*.tar.gz*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

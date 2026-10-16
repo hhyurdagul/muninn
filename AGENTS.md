@@ -112,7 +112,6 @@ graph LR
 
 ## Backlog / known gaps
 
-- Codex and omp registration haven't been tried yet.
 - Context fitting drops old turns rather than summarizing them, and `CONTEXT_CHARS` is fixed. Models with a context smaller than about 100k tokens (small local models) need a smaller budget.
 - The CLI cannot confirm changes without a terminal (`/dev/tty`). In that case changes needing review are rejected.
 - Later: structure presets, imports from other tools, and a calibration run before going live.
