@@ -62,8 +62,9 @@ graph LR
 1. A surface builds a `Conversation` (`Surface::Cli|Mcp|Tui`, `Kind::Chat|Onboarding`). The TUI and MCP load existing conversations from `Store`.
 2. It calls `Librarian::turn(conv, text, review, on_update, cancel)`.
 3. `Librarian::turn` re-reads `ignore` from the settings file and applies it with `Vault::set_ignore`. Then `prompt::system_prompt` is rebuilt. It contains the role text, the surface-specific review text, the current `AGENTS.md` and root `MUNINN.md` (`MUNINN.md` wins on conflicts), and the vault tree without hidden entries. For onboarding, it adds the onboarding section.
-4. `tools::toolset` creates the tools over a shared `TurnContext` (vault, journal, review mode, pending proposals, note events). `Agent::run` loops until the model replies without calling any tools.
-5. The surface renders `Update`s (`Text`, `Tool`, `Note`) as they stream in. Afterwards it saves the conversation; the CLI does not save.
+4. `tools::toolset` creates the tools over a shared `TurnContext` (vault, journal, review mode, pending proposals, note events). `Agent::run` loops until the model replies without calling any tools. Each request goes through `muninn_agent::fit`, which keeps it within `CONTEXT_CHARS` (`librarian.rs`). First, tool results from earlier turns are replaced with a stub; then the oldest turns are dropped. The stored history stays complete.
+5. If the reply names a note the model saw only as a search match (`cited_unread`), `Librarian::turn` sends one automatic follow-up asking it to read the note and answer again. The follow-up is a user-role message marked in `extra` (`is_automatic`); it doesn't count as a user turn, and the TUI hides it.
+6. The surface renders `Update`s (`Text`, `Tool`, `Note`, `Recheck`) as they stream in. After `Recheck`, the answer that follows replaces the one before. Afterwards it saves the conversation; the CLI does not save.
 
 ### Settings and data
 
@@ -81,6 +82,7 @@ graph LR
 - **Review modes.**
   - TUI and CLI use `Review::Interactive`: the tool waits while a `Reviewer` asks a human (a channel to the TUI dialog, or `/dev/tty` in the CLI).
   - MCP uses `Review::Deferred`: the proposal is stored on the conversation, and `apply_pending_change` refuses to run until a later user turn exists (`Proposal.user_turn`). The diff is appended to the MCP reply by `muninn/src/mcp.rs::render`.
+  - An interactive turn on a conversation with pending proposals (started over MCP) also gets `apply_pending_change` and `discard_pending_change`. Applying goes through the `Reviewer`, so a human approves it live.
 - **Provider data round-trips.** `Message::extra` and `ToolCall::extra` hold data a provider needs back unchanged: Anthropic's raw content blocks, including thinking signatures, and Gemini's `extra_content` thought signatures. The agent stores replies as they came, and providers ignore other providers' keys.
 - **Valid transcripts.** `Agent::run` answers every tool call, including on errors and cancellation. Tool errors go back to the model as `Error: …`.
 - **Rules live in the vault.** Muninn's settings hold only the vault path, provider, model, custom endpoint, keys, and the `ignore` patterns. `ignore` sets access limits, not conventions, and it must stay where the model can't edit it. Never store vault conventions in Muninn's settings; they go in `AGENTS.md`, or in `MUNINN.md` when they apply to Muninn alone.
@@ -111,7 +113,6 @@ graph LR
 ## Backlog / known gaps
 
 - Codex and omp registration haven't been tried yet.
-- Long conversations are never trimmed or summarized to fit the context window.
-- A TUI turn on a conversation started over MCP has no `apply_pending_change` (the review mode is interactive), so pending MCP proposals stay stuck there.
+- Context fitting drops old turns rather than summarizing them, and `CONTEXT_CHARS` is fixed. Models with a context smaller than about 100k tokens (small local models) need a smaller budget.
 - The CLI cannot confirm changes without a terminal (`/dev/tty`). In that case changes needing review are rejected.
 - Later: structure presets, imports from other tools, and a calibration run before going live.

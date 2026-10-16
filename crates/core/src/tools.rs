@@ -48,7 +48,9 @@ pub(crate) struct VaultTool {
 /// deferred to a later message.
 pub(crate) fn toolset(ctx: Arc<TurnContext>) -> Vec<Arc<dyn Tool>> {
     let mut kinds = vec![Kind::List, Kind::Read, Kind::Search, Kind::Write, Kind::Edit, Kind::CreateFolder];
-    if matches!(ctx.review, Review::Deferred) {
+    // An interactive turn on a conversation started over MCP may still have
+    // proposals waiting; a human approves them through the reviewer.
+    if matches!(ctx.review, Review::Deferred) || !ctx.pending.lock().is_empty() {
         kinds.extend([Kind::ApplyPending, Kind::DiscardPending]);
     }
     kinds.into_iter().map(|kind| Arc::new(VaultTool { kind, ctx: ctx.clone() }) as Arc<dyn Tool>).collect()
@@ -135,7 +137,8 @@ impl Tool for VaultTool {
             ),
             Kind::ApplyPending => spec(
                 "apply_pending_change",
-                "Write a proposed change after the caller approved it in a later message.",
+                "Write a pending proposed change once the caller approved it in a later message. In a live \
+                 session it is shown to the user for approval first.",
                 json!({ "change_id": { "type": "string" } }),
                 &["change_id"],
             ),
@@ -218,12 +221,17 @@ impl Tool for VaultTool {
             Kind::ApplyPending => {
                 let id = str_arg(&args, "change_id")?;
                 let proposal = ctx.take_pending(id)?;
-                if ctx.user_turn <= proposal.user_turn {
+                if matches!(ctx.review, Review::Deferred) && ctx.user_turn <= proposal.user_turn {
                     ctx.pending.lock().push(proposal);
                     bail!("the caller has not replied since this change was proposed; end your turn and wait for approval");
                 }
                 if ctx.vault.read(&proposal.path)? != proposal.before {
                     bail!("{} changed since the proposal; read it again and propose a new change", proposal.path);
+                }
+                if let Review::Interactive(reviewer) = &ctx.review {
+                    if let Decision::Reject(feedback) = reviewer.review(&proposal).await {
+                        return Ok(rejected(&feedback));
+                    }
                 }
                 ctx.write(&proposal.path, proposal.after, &proposal.summary)
             }
@@ -273,12 +281,7 @@ impl VaultTool {
         match &ctx.review {
             Review::Interactive(reviewer) => match reviewer.review(&proposal).await {
                 Decision::Approve => Ok(format!("Approved. {}", ctx.write(&path, proposal.after, summary)?)),
-                Decision::Reject(feedback) if feedback.trim().is_empty() => {
-                    Ok("The user rejected this change; nothing was written.".into())
-                }
-                Decision::Reject(feedback) => {
-                    Ok(format!("The user rejected this change; nothing was written. Their feedback: {feedback}"))
-                }
+                Decision::Reject(feedback) => Ok(rejected(&feedback)),
             },
             Review::Deferred => {
                 let id = proposal.id.clone();
@@ -338,6 +341,13 @@ fn opt_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 
 fn opt_u64(args: &Value, key: &str) -> Option<u64> {
     args.get(key).and_then(Value::as_u64)
+}
+
+fn rejected(feedback: &str) -> String {
+    match feedback.trim() {
+        "" => "The user rejected this change; nothing was written.".into(),
+        feedback => format!("The user rejected this change; nothing was written. Their feedback: {feedback}"),
+    }
 }
 
 fn review_arg(args: &Value) -> bool {
@@ -409,6 +419,37 @@ mod tests {
         tool(&next, "apply_pending_change").call(json!({"change_id": id})).await.unwrap();
         assert_eq!(next.vault.read("inbox/n.md").unwrap().as_deref(), Some("hi"));
         assert!(next.pending.lock().is_empty());
+    }
+
+    struct Answer(Decision);
+
+    #[async_trait]
+    impl crate::librarian::Reviewer for Answer {
+        async fn review(&self, _: &Proposal) -> Decision {
+            self.0.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_live_session_can_apply_changes_proposed_over_mcp_after_the_user_approves() {
+        let (_d, live) = ctx(Review::Interactive(Arc::new(Answer(Decision::Approve))), 1);
+        assert!(!toolset(live.clone()).iter().any(|t| t.spec().name == "apply_pending_change"), "nothing pending");
+
+        for (decision, written) in [(Decision::Reject("no".into()), None), (Decision::Approve, Some("hi"))] {
+            let (_d, ctx) = ctx(Review::Interactive(Arc::new(Answer(decision))), 1);
+            let proposal = Proposal {
+                id: "p1".into(),
+                path: "inbox/n.md".into(),
+                before: None,
+                after: "hi".into(),
+                summary: "s".into(),
+                user_turn: 1,
+            };
+            ctx.pending.lock().push(proposal);
+            let out = tool(&ctx, "apply_pending_change").call(json!({"change_id": "p1"})).await.unwrap();
+            assert_eq!(ctx.vault.read("inbox/n.md").unwrap().as_deref(), written, "{out}");
+            assert!(ctx.pending.lock().is_empty());
+        }
     }
 
     #[tokio::test]

@@ -467,6 +467,12 @@ impl Chat {
                 Role::Tool => {}
             }
         }
+        for proposal in &conversation.pending {
+            self.info(format!(
+                "Pending change `{}` to `{}`: {}. Ask Muninn to apply or discard it; applying shows it for your approval.",
+                proposal.id, proposal.path, proposal.summary
+            ));
+        }
         self.title = conversation.title.clone();
         self.notes = conversation.notes.clone();
         self.conversation = Some(conversation);
