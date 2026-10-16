@@ -8,8 +8,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use muninn_core::{
-    CancellationToken, Conversation, Kind, Librarian, NoteKind, Paths, Review, Settings, Stop, Store, Surface,
-    TurnResult,
+    CancellationToken, Conversation, Kind, Librarian, NoteEvent, NoteKind, Paths, Review, Settings, Stop, Store,
+    Surface, TurnResult,
 };
 use muninn_mcp::{Handler, ServerInfo, ToolInfo, ToolResult};
 use serde_json::{json, Value};
@@ -84,15 +84,12 @@ impl Handler for MuninnTool {
             "muninn" => self.converse(&args).await,
             other => Err(anyhow::anyhow!("unknown tool {other}")),
         };
-        match result {
-            Ok(text) => ToolResult { text, is_error: false },
-            Err(err) => ToolResult { text: format!("Muninn failed: {err:#}"), is_error: true },
-        }
+        result.unwrap_or_else(|err| ToolResult { text: format!("Muninn failed: {err:#}"), is_error: true })
     }
 }
 
 impl MuninnTool {
-    async fn converse(&self, args: &Value) -> Result<String> {
+    async fn converse(&self, args: &Value) -> Result<ToolResult> {
         let message = args.get("message").and_then(Value::as_str).context("`message` is required")?;
         let settings = Settings::load(&self.paths)?;
         anyhow::ensure!(
@@ -112,10 +109,16 @@ impl MuninnTool {
             Some(id) => store.load(id)?,
             None => Conversation::new(Surface::Mcp, Kind::Chat, librarian.vault().root()),
         };
+        let before = conversation.notes.len();
         let result =
             librarian.turn(&mut conversation, message, Review::Deferred, &mut |_| {}, &CancellationToken::new()).await;
         store.save(&conversation)?;
-        Ok(render(&conversation, &result?))
+        Ok(match result {
+            Ok(result) => ToolResult { text: render(&conversation, &result), is_error: false },
+            Err(err) => {
+                ToolResult { text: failure(&conversation, &conversation.notes[before..], &err), is_error: true }
+            }
+        })
     }
 }
 
@@ -125,9 +128,26 @@ fn render(conversation: &Conversation, result: &TurnResult) -> String {
     if result.stop == Stop::StepLimit {
         out.push_str("\n\n(Muninn stopped after too many steps.)");
     }
-    out.push_str("\n\n---");
+    out + &footer(conversation, &result.notes)
+}
+
+/// A turn that broke off: the error, plus whatever it already did, so the
+/// caller knows what landed and can continue the conversation.
+fn failure(conversation: &Conversation, notes: &[NoteEvent], err: &anyhow::Error) -> String {
+    let mut out = format!("Muninn failed: {err:#}");
+    if notes.iter().any(|n| n.kind != NoteKind::Read) {
+        out.push_str("\n\nThe turn stopped partway. The changes listed below were already made.");
+    }
+    out.push_str(&footer(conversation, notes));
+    out.push_str("\nReply in this conversation to let Muninn pick up where it stopped.");
+    out
+}
+
+/// Notes read and changed, pending proposals, and the conversation id.
+fn footer(conversation: &Conversation, notes: &[NoteEvent]) -> String {
+    let mut out = String::from("\n\n---");
     let mut read: Vec<&str> = Vec::new();
-    for note in result.notes.iter().filter(|n| n.kind == NoteKind::Read) {
+    for note in notes.iter().filter(|n| n.kind == NoteKind::Read) {
         if !read.contains(&note.path.as_str()) {
             read.push(&note.path);
         }
@@ -138,11 +158,11 @@ fn render(conversation: &Conversation, result: &TurnResult) -> String {
             read.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ")
         ));
     }
-    for note in result.notes.iter().filter(|n| n.kind == NoteKind::Changed) {
+    for note in notes.iter().filter(|n| n.kind == NoteKind::Changed) {
         let id = note.id.as_deref().unwrap_or_default();
         out.push_str(&format!("\nChanged `{}` (undo with `muninn undo {id}`)", note.path));
     }
-    for proposal in &result.pending {
+    for proposal in &conversation.pending {
         out.push_str(&format!(
             "\n\nPending change {} to `{}`: {}\n```diff\n{}```\nNot written yet. Reply in this conversation to approve or reject it.",
             proposal.id,

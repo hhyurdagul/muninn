@@ -361,3 +361,24 @@ async fn model_switches_only_after_a_test_call_and_keeps_keys_per_provider() {
     assert!(config().contains("custom = \"test\""), "the key stays with its provider");
     assert_eq!(server.requests().last().unwrap()["model"], "mock-2");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_failure_partway_reports_what_was_already_written() {
+    let server = MockServer::start(|body| match body["messages"].as_array().map_or(0, Vec::len) {
+        // System prompt and user message: save a note first.
+        0..=2 => call("write_note", json!({"path":"ideas/a.md","content":"A\n","summary":"Add a"})),
+        _ => Message { extra: json!({"mock_status": 400}), ..Message::assistant("") },
+    })
+    .await
+    .unwrap();
+    let env = Env::new(&server.url);
+    let mut mcp = Mcp::start(&env).await;
+    let reply =
+        mcp.request("tools/call", json!({"name":"muninn","arguments":{"message":"Save idea a, then more"}})).await;
+    assert_eq!(reply["result"]["isError"], true);
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Muninn failed") && text.contains("400"), "{text}");
+    assert!(text.contains("Changed `ideas/a.md` (undo with `muninn undo "), "{text}");
+    assert!(text.contains("conversation_id: c"), "{text}");
+    assert_eq!(fs::read_to_string(env.vault("ideas/a.md")).unwrap(), "A\n");
+}

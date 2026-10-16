@@ -37,14 +37,9 @@ impl Anthropic {
 
     /// Ids of the models the key can use, sorted.
     pub async fn models(&self) -> Result<Vec<String>> {
-        let response = self
-            .http
-            .get(format!("{}/models?limit=1000", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", VERSION)
-            .send()
-            .await
-            .with_context(|| format!("cannot reach {}", self.base_url))?;
+        let url = format!("{}/models?limit=1000", self.base_url);
+        let send = || self.http.get(&url).header("x-api-key", &self.api_key).header("anthropic-version", VERSION);
+        let response = crate::retry::send(send, &self.base_url).await?;
         model_ids(response).await
     }
 
@@ -129,15 +124,10 @@ impl Provider for Anthropic {
         request: Request<'_>,
         on_text: &mut (dyn for<'s> FnMut(&'s str) + Send),
     ) -> Result<Message> {
-        let response = self
-            .http
-            .post(format!("{}/messages", self.base_url))
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", VERSION)
-            .json(&self.body(&request))
-            .send()
-            .await
-            .with_context(|| format!("cannot reach {}", self.base_url))?;
+        let (url, body) = (format!("{}/messages", self.base_url), self.body(&request));
+        let send =
+            || self.http.post(&url).header("x-api-key", &self.api_key).header("anthropic-version", VERSION).json(&body);
+        let response = crate::retry::send(send, &self.base_url).await?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();

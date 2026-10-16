@@ -1,7 +1,8 @@
 //! A scripted OpenAI-compatible server for tests and offline demos.
 //! Each `/chat/completions` request is answered by streaming one assistant
 //! message chosen by a handler that sees the request body; `GET /models`
-//! lists two models.
+//! lists two models. A reply whose `extra` holds `{"mock_status": 400}` is
+//! answered with that HTTP error instead.
 
 use std::sync::Arc;
 
@@ -103,6 +104,12 @@ async fn serve(mut stream: TcpStream, handler: &Handler, log: &Mutex<Vec<Value>>
     let body: Value = serde_json::from_slice(&buffer[header_end..]).unwrap_or(Value::Null);
     let reply = handler(&body);
     log.lock().push(body);
+    if let Some(status) = reply.extra.get("mock_status").and_then(Value::as_u64) {
+        let body = json!({ "error": { "message": "mock failure" } }).to_string();
+        let head = format!("HTTP/1.1 {status} Mock\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len());
+        stream.write_all(format!("{head}{body}").as_bytes()).await?;
+        return stream.shutdown().await;
+    }
 
     let mut out = String::from("HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n");
     for event in events(&reply) {

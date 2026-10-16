@@ -16,6 +16,7 @@ mod anthropic;
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
 mod openai;
+mod retry;
 mod sse;
 mod types;
 

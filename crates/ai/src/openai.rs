@@ -30,13 +30,8 @@ impl OpenAiCompatible {
 
     /// Ids of the models the endpoint offers, sorted.
     pub async fn models(&self) -> Result<Vec<String>> {
-        let response = self
-            .http
-            .get(format!("{}/models", self.base_url))
-            .bearer_auth(&self.api_key)
-            .send()
-            .await
-            .with_context(|| format!("cannot reach {}", self.base_url))?;
+        let url = format!("{}/models", self.base_url);
+        let response = crate::retry::send(|| self.http.get(&url).bearer_auth(&self.api_key), &self.base_url).await?;
         model_ids(response).await
     }
 
@@ -99,15 +94,9 @@ impl Provider for OpenAiCompatible {
         request: Request<'_>,
         on_text: &mut (dyn for<'s> FnMut(&'s str) + Send),
     ) -> Result<Message> {
-        let response = self
-            .http
-            .post(format!("{}/chat/completions", self.base_url))
-            .bearer_auth(&self.api_key)
-            .header("X-Title", "Muninn")
-            .json(&self.body(&request))
-            .send()
-            .await
-            .with_context(|| format!("cannot reach {}", self.base_url))?;
+        let (url, body) = (format!("{}/chat/completions", self.base_url), self.body(&request));
+        let send = || self.http.post(&url).bearer_auth(&self.api_key).header("X-Title", "Muninn").json(&body);
+        let response = crate::retry::send(send, &self.base_url).await?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
