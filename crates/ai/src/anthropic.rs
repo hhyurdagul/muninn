@@ -214,8 +214,11 @@ impl Accumulator {
     }
 
     fn finish(self) -> Result<Message> {
-        if self.stop_reason.as_deref() == Some("refusal") {
-            bail!("the model declined to answer this request");
+        match self.stop_reason.as_deref() {
+            Some("refusal") => bail!("the model declined to answer this request"),
+            Some("max_tokens") => bail!("the reply hit the model's output limit and is incomplete"),
+            None => bail!("model stream ended early; the reply is incomplete"),
+            _ => {}
         }
         let mut message = Message::assistant("");
         for (block, input) in self.blocks.iter().zip(&self.inputs) {

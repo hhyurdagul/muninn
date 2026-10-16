@@ -118,6 +118,9 @@ impl Provider for OpenAiCompatible {
                 }
             }
         }
+        if reply.finish_reason.is_none() {
+            bail!("model stream ended early; the reply is incomplete");
+        }
         reply.finish()
     }
 }
@@ -127,6 +130,7 @@ impl Provider for OpenAiCompatible {
 struct Accumulator {
     content: String,
     calls: Vec<ToolCall>,
+    finish_reason: Option<String>,
 }
 
 impl Accumulator {
@@ -135,6 +139,9 @@ impl Accumulator {
         if let Some(error) = event.get("error") {
             let message = error.get("message").and_then(Value::as_str).unwrap_or("unknown error");
             return Err(anyhow!("model error: {message}"));
+        }
+        if let Some(reason) = event.pointer("/choices/0/finish_reason").and_then(Value::as_str) {
+            self.finish_reason = Some(reason.to_string());
         }
         let Some(delta) = event.pointer("/choices/0/delta") else {
             return Ok(None);
@@ -172,6 +179,11 @@ impl Accumulator {
     }
 
     fn finish(self) -> Result<Message> {
+        match self.finish_reason.as_deref() {
+            Some("length") => bail!("the reply hit the model's output limit and is incomplete"),
+            Some("content_filter") => bail!("the provider's content filter stopped the reply"),
+            _ => {}
+        }
         let mut message = Message::assistant(self.content);
         message.tool_calls = self
             .calls
@@ -248,6 +260,13 @@ mod tests {
         let message = acc.finish().unwrap();
         assert_eq!(message.tool_calls[0].extra, signature);
         assert_eq!(wire_message(&message)["tool_calls"][0]["extra_content"], signature);
+    }
+
+    #[test]
+    fn reports_replies_cut_short() {
+        let mut acc = Accumulator::default();
+        acc.apply(&json!({"choices":[{"delta":{"content":"Here is"},"finish_reason":"length"}]})).unwrap();
+        assert!(acc.finish().unwrap_err().to_string().contains("output limit"));
     }
 
     #[test]
