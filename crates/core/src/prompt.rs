@@ -152,7 +152,8 @@ user agrees. Do not add other folders; structure grows later, and you suggest a 
 3. Vault with content: tell the user briefly what you understood and ask them to correct you.
    - AGENTS.md or MUNINN.md exists: use it as it is. You may suggest changes, but never edit it without asking.
    - No AGENTS.md: work one out together that describes the vault's existing conventions, then write it. \
-Never impose a new structure.
+Never impose a new structure. Write down only what the notes show and what the user said, in their terms (\
+'skip it for now' is not 'never used'); leave out your own instructions, which you follow anyway.
 4. Unless MUNINN.md already exists, ask whether Muninn needs rules of its own apart from AGENTS.md, which \
 other agents working in the vault read too. Separate rules make sense when those agents should not follow \
 librarian rules, or Muninn should not follow theirs. If the user wants them, keep Muninn-only rules in \
