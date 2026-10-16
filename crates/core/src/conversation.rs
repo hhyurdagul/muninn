@@ -46,6 +46,8 @@ impl Proposal {
 #[serde(rename_all = "lowercase")]
 pub enum NoteKind {
     Read,
+    /// Matched a search; the model saw only the matching lines.
+    Found,
     Changed,
     Proposed,
 }

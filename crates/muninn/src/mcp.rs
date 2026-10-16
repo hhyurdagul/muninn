@@ -128,23 +128,25 @@ fn render(conversation: &Conversation, result: &TurnResult) -> String {
     if result.stop == Stop::StepLimit {
         out.push_str("\n\n(Muninn stopped after too many steps.)");
     }
-    out + &footer(conversation, &result.notes)
+    let footer = footer(conversation, &result.notes, &out);
+    out + &footer
 }
 
 /// A turn that broke off: the error, plus whatever it already did, so the
 /// caller knows what landed and can continue the conversation.
 fn failure(conversation: &Conversation, notes: &[NoteEvent], err: &anyhow::Error) -> String {
     let mut out = format!("Muninn failed: {err:#}");
-    if notes.iter().any(|n| n.kind != NoteKind::Read) {
+    if notes.iter().any(|n| matches!(n.kind, NoteKind::Changed | NoteKind::Proposed)) {
         out.push_str("\n\nThe turn stopped partway. The changes listed below were already made.");
     }
-    out.push_str(&footer(conversation, notes));
+    out.push_str(&footer(conversation, notes, ""));
     out.push_str("\nReply in this conversation to let Muninn pick up where it stopped.");
     out
 }
 
-/// Notes read and changed, pending proposals, and the conversation id.
-fn footer(conversation: &Conversation, notes: &[NoteEvent]) -> String {
+/// Notes read, notes the reply cites that were only seen in search results,
+/// changes, pending proposals, and the conversation id.
+fn footer(conversation: &Conversation, notes: &[NoteEvent], reply: &str) -> String {
     let mut out = String::from("\n\n---");
     let mut read: Vec<&str> = Vec::new();
     for note in notes.iter().filter(|n| n.kind == NoteKind::Read) {
@@ -152,11 +154,20 @@ fn footer(conversation: &Conversation, notes: &[NoteEvent]) -> String {
             read.push(&note.path);
         }
     }
+    let list = |paths: &[&str]| paths.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ");
     if !read.is_empty() {
-        out.push_str(&format!(
-            "\nNotes read: {}",
-            read.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ")
-        ));
+        out.push_str(&format!("\nNotes read: {}", list(&read)));
+    }
+    let mut searched: Vec<&str> = Vec::new();
+    for note in notes.iter().filter(|n| n.kind == NoteKind::Found) {
+        let path = note.path.as_str();
+        let cited = reply.contains(path) || reply.contains(path.trim_end_matches(".md"));
+        if cited && !read.contains(&path) && !searched.contains(&path) {
+            searched.push(path);
+        }
+    }
+    if !searched.is_empty() {
+        out.push_str(&format!("\nCited from search matches only (not read in full): {}", list(&searched)));
     }
     for note in notes.iter().filter(|n| n.kind == NoteKind::Changed) {
         let id = note.id.as_deref().unwrap_or_default();

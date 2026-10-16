@@ -382,3 +382,18 @@ async fn mcp_failure_partway_reports_what_was_already_written() {
     assert!(text.contains("conversation_id: c"), "{text}");
     assert_eq!(fs::read_to_string(env.vault("ideas/a.md")).unwrap(), "A\n");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_footer_names_notes_cited_from_search_matches_only() {
+    let server = MockServer::scripted(vec![
+        call("search_notes", json!({"query":"conversations"})),
+        Message::assistant("You store conversations as JSON (`projects/muninn.md`)."),
+    ])
+    .await
+    .unwrap();
+    let env = Env::new(&server.url);
+    let mut mcp = Mcp::start(&env).await;
+    let (text, _) = mcp.say("How do I store conversations?", None).await;
+    assert!(text.contains("Cited from search matches only (not read in full): `projects/muninn.md`"), "{text}");
+    assert!(!text.contains("Notes read"), "{text}");
+}

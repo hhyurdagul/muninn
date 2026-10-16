@@ -618,7 +618,7 @@ impl Chat {
 
     fn draw_notes(&self, frame: &mut Frame, area: Rect) {
         let mut seen: Vec<(&str, NoteKind)> = Vec::new();
-        for note in self.notes.iter().rev() {
+        for note in self.notes.iter().rev().filter(|n| n.kind != NoteKind::Found) {
             if !seen.iter().any(|(p, _)| *p == note.path) {
                 seen.push((&note.path, note.kind));
             }
@@ -629,7 +629,7 @@ impl Chat {
             seen.iter()
                 .map(|(path, kind)| {
                     let (mark, style) = match kind {
-                        NoteKind::Read => ("·", dim()),
+                        NoteKind::Read | NoteKind::Found => ("·", dim()),
                         NoteKind::Changed => ("✎", Style::default().fg(Color::Green)),
                         NoteKind::Proposed => ("?", Style::default().fg(Color::Yellow)),
                     };

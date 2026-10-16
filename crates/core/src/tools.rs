@@ -169,6 +169,11 @@ impl Tool for VaultTool {
                 if hits.is_empty() {
                     return Ok("No matches.".into());
                 }
+                let mut found: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+                found.dedup();
+                for path in found {
+                    ctx.record(path, NoteKind::Found, None);
+                }
                 let lines: Vec<String> = hits
                     .iter()
                     .map(|h| match h.line {
