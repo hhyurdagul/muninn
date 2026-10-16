@@ -73,6 +73,7 @@ Muninn's replies render as Markdown: headings, emphasis, lists and task lists, q
 | `/resume` | Continue an earlier conversation (Ctrl+O) |
 | `/log` | Recent changes Muninn made to the vault |
 | `/undo [id]` | Revert the latest change, or the one with this id |
+| `/model` | Switch the provider or model |
 | `/init` | Redo setup and onboarding |
 | `/quit`, `/exit` | Leave (Ctrl+C) |
 
