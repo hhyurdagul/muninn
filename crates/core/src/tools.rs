@@ -93,7 +93,9 @@ impl Tool for VaultTool {
             ),
             Kind::Search => spec(
                 "search_notes",
-                "Case-insensitive search over note names and contents. Returns `path:line: text` matches.",
+                "Case-insensitive search for exact text in note names and contents. Search one keyword or short \
+                 phrase at a time. When a query of several words matches nothing as a whole, lines matching any \
+                 of its words are returned instead. Returns `path:line: text` matches.",
                 json!({
                     "query": { "type": "string" },
                     "regex": { "type": "boolean", "description": "Treat query as a regular expression." },
@@ -164,10 +166,16 @@ impl Tool for VaultTool {
             Kind::Search => {
                 let max = opt_u64(&args, "max_results").unwrap_or(50).clamp(1, 500) as usize;
                 let regex = args.get("regex").and_then(Value::as_bool).unwrap_or(false);
-                let hits =
-                    ctx.vault.search(str_arg(&args, "query")?, regex, opt_str(&args, "path").unwrap_or(""), max)?;
+                let (query, dir) = (str_arg(&args, "query")?, opt_str(&args, "path").unwrap_or(""));
+                let mut hits = ctx.vault.search(query, regex, dir, max)?;
+                let words: Vec<String> = query.split_whitespace().map(regex::escape).collect();
+                let mut heading = String::new();
+                if hits.is_empty() && !regex && words.len() > 1 {
+                    hits = ctx.vault.search(&words.join("|"), true, dir, max)?;
+                    heading = format!("No line contains \"{query}\" as a whole; lines with any of its words:\n");
+                }
                 if hits.is_empty() {
-                    return Ok("No matches.".into());
+                    return Ok(format!("No matches for \"{query}\"."));
                 }
                 let mut found: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
                 found.dedup();
@@ -181,7 +189,7 @@ impl Tool for VaultTool {
                         n => format!("{}:{n}: {}", h.path, h.text),
                     })
                     .collect();
-                Ok(lines.join("\n"))
+                Ok(heading + &lines.join("\n"))
             }
             Kind::Write => {
                 let content = str_arg(&args, "content")?.to_string();
@@ -436,6 +444,16 @@ mod tests {
             write.call(json!({"path": "projects/muninn.md", "content": content, "summary": "s"})).await.unwrap();
         }
         assert_eq!(ctx.vault.read("projects/muninn.md").unwrap().as_deref(), Some("v2"));
+    }
+
+    #[tokio::test]
+    async fn a_multi_word_search_without_matches_falls_back_to_any_word() {
+        let (_d, ctx) = ctx(Review::Deferred, 1);
+        let search = tool(&ctx, "search_notes");
+        let out = search.call(json!({"query": "website blog rules"})).await.unwrap();
+        assert!(out.starts_with("No line contains \"website blog rules\""), "{out}");
+        assert!(out.contains("AGENTS.md:1: rules"), "{out}");
+        assert_eq!(search.call(json!({"query": "zebra"})).await.unwrap(), "No matches for \"zebra\".");
     }
 
     #[test]
