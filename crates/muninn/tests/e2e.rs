@@ -182,6 +182,7 @@ struct Mcp {
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
     next_id: i64,
+    instructions: String,
     _child: tokio::process::Child,
 }
 
@@ -192,6 +193,7 @@ impl Mcp {
             stdin: child.stdin.take().unwrap(),
             stdout: BufReader::new(child.stdout.take().unwrap()).lines(),
             next_id: 0,
+            instructions: String::new(),
             _child: child,
         };
         let init = mcp
@@ -201,6 +203,7 @@ impl Mcp {
             )
             .await;
         assert_eq!(init["result"]["serverInfo"]["name"], "muninn");
+        mcp.instructions = init["result"]["instructions"].as_str().unwrap_or_default().to_string();
         mcp.stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").await.unwrap();
         mcp
     }
@@ -304,4 +307,25 @@ async fn mcp_conversation_continues_after_muninn_asks_back_and_cites_notes() {
         serde_json::from_slice(&fs::read(env.dir.path().join(format!("data/conversations/{id}.json"))).unwrap())
             .unwrap();
     assert_eq!(saved["surface"], "mcp");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agents_get_memory_at_startup_and_only_a_reviewed_change_updates_it() {
+    let server = MockServer::scripted(vec![
+        call("edit_note", json!({"path":"MEMORY.md","old_text":"- Prefers Rust","new_text":"- Prefers Rust\n- Uses Nix flakes","summary":"Remember Nix"})),
+        Message::assistant("I proposed adding that you use Nix flakes."),
+    ])
+    .await
+    .unwrap();
+    let env = Env::new(&server.url);
+    fs::write(env.vault("MEMORY.md"), "# About the user\n- Prefers Rust\n").unwrap();
+
+    let (code, out, _) = env.run(&["memory"]).await;
+    assert_eq!((code, out.as_str()), (0, "# About the user\n- Prefers Rust\n"));
+
+    let mut mcp = Mcp::start(&env).await;
+    assert!(mcp.instructions.contains("- Prefers Rust"), "{}", mcp.instructions);
+    let (text, _) = mcp.say("Remember that I use Nix flakes", None).await;
+    assert!(text.contains("Pending change"), "{text}");
+    assert_eq!(fs::read_to_string(env.vault("MEMORY.md")).unwrap(), "# About the user\n- Prefers Rust\n");
 }

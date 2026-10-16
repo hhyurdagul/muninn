@@ -24,6 +24,9 @@ enum Command {
         /// The prompt; quote it or pass it as separate words.
         prompt: Vec<String>,
     },
+    /// Print MEMORY.md, the short memory about you that agents load when they
+    /// start (for agents that take it from a session-start hook).
+    Memory,
     /// Serve MCP over stdio (your coding agent starts this).
     Mcp,
     /// Restart onboarding: vault path, model, agent integration, vault rules.
@@ -47,6 +50,7 @@ async fn main() {
         None => tui::run(tui::Start::Default).await.map(|_| 0),
         Some(Command::Init) => tui::run(tui::Start::Onboarding).await.map(|_| 0),
         Some(Command::Ask { prompt }) => cli::ask(prompt).await,
+        Some(Command::Memory) => cli::memory(),
         Some(Command::Mcp) => mcp::serve().await.map(|_| 0),
         Some(Command::Undo { id }) => cli::undo(id.as_deref()),
         Some(Command::Log { limit }) => cli::log(limit),

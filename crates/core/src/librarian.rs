@@ -70,11 +70,9 @@ impl Librarian {
     /// A librarian that follows `settings`, re-reading their ignore patterns
     /// from `paths` before every turn so edits apply without a restart.
     pub fn from_settings(settings: &Settings, paths: &Paths) -> Result<Self> {
-        let vault = settings.vault.as_ref().context("no vault configured; run `muninn init`")?;
+        let vault = settings.open_vault()?;
         let key = settings.api_key().context("no API key configured; run `muninn init`")?;
         let provider = OpenAiCompatible::new(&settings.base_url, &key, &settings.model);
-        let vault = Vault::open(vault)?;
-        vault.set_ignore(&settings.ignore)?;
         let librarian = Self::new(Arc::new(provider), vault, Journal::open(paths.journal_file()));
         Ok(Self { paths: Some(paths.clone()), ..librarian })
     }

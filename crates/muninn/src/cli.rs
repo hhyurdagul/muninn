@@ -1,4 +1,4 @@
-//! One-shot commands: `ask`, `undo`, `log`.
+//! One-shot commands: `ask`, `memory`, `undo`, `log`.
 
 use std::collections::HashSet;
 use std::io::{BufRead, IsTerminal, Read, Write};
@@ -108,8 +108,16 @@ fn confirm(proposal: &Proposal) -> Result<Decision> {
 fn open_vault() -> Result<(Vault, Journal)> {
     let paths = Paths::from_env();
     let settings = Settings::load(&paths)?;
-    let vault = settings.vault.context("no vault configured; run `muninn init`")?;
-    Ok((Vault::open(vault)?, Journal::open(paths.journal_file())))
+    Ok((settings.open_vault()?, Journal::open(paths.journal_file())))
+}
+
+/// Prints MEMORY.md (nothing when it is empty), e.g. for a session-start hook.
+pub fn memory() -> Result<i32> {
+    let (vault, _) = open_vault()?;
+    if let Some(memory) = muninn_core::memory(&vault) {
+        println!("{memory}");
+    }
+    Ok(0)
 }
 
 pub fn undo(id: Option<&str>) -> Result<i32> {

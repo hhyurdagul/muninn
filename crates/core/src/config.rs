@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use muninn_vault::Vault;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -98,6 +99,13 @@ impl Settings {
             .ok()
             .filter(|k| !k.is_empty())
             .or_else(|| self.api_key.clone().filter(|k| !k.is_empty()))
+    }
+
+    /// The configured vault, with the ignore patterns applied.
+    pub fn open_vault(&self) -> Result<Vault> {
+        let vault = Vault::open(self.vault.as_ref().context("no vault configured; run `muninn init`")?)?;
+        vault.set_ignore(&self.ignore)?;
+        Ok(vault)
     }
 
     /// True once onboarding stored a usable vault and key.

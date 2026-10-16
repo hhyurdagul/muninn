@@ -6,6 +6,17 @@ use crate::conversation::{Kind, Surface};
 pub(crate) const SHARED_RULES: &str = "AGENTS.md";
 /// Rules only for Muninn; they win over [`SHARED_RULES`].
 pub(crate) const MUNINN_RULES: &str = "MUNINN.md";
+/// The short memory about the user that every agent loads when it starts.
+pub(crate) const MEMORY: &str = "MEMORY.md";
+/// Most characters MEMORY.md may hold, so that it fits with Muninn's own
+/// introduction in the 4,096 characters Claude Code keeps of an MCP server's
+/// instructions.
+pub const MEMORY_LIMIT: usize = 3000;
+
+/// The vault's MEMORY.md, if it has any content.
+pub fn memory(vault: &Vault) -> Option<String> {
+    vault.read(MEMORY).ok().flatten().map(|text| text.trim().to_string()).filter(|text| !text.is_empty())
+}
 
 /// Builds the system prompt fresh for every turn so rule edits apply at once.
 pub(crate) fn system_prompt(vault: &Vault, surface: Surface, kind: Kind) -> String {
@@ -36,6 +47,12 @@ otherwise writes land directly. Changes to an existing AGENTS.md or MUNINN.md al
 only for you, and it wins where the two disagree. When the user gives you a new rule, put rules for every \
 agent in AGENTS.md and rules only for you in MUNINN.md. If there is no MUNINN.md yet and a rule is only \
 about you, ask whether to start one for it or keep the rule in AGENTS.md.
+- Memory: MEMORY.md at the vault root is the short memory every agent loads when it starts: who the user \
+is, what they work on now, standing preferences, and recent decisions that shape future work. Propose an \
+update when a caller asks you to remember something, or when what you save changes one of those facts. Keep \
+it under {limit} characters: one short line per item under a few headings, details in notes linked by path \
+instead of copied, stale lines merged or dropped rather than piling up. Rules never go there. Every change \
+to MEMORY.md goes through review.
 - Hidden files and folders (names starting with a dot, like .obsidian or .agents) are left out of listings \
 and searches. list_notes with hidden=true shows them, search_notes looks inside one when you pass it as \
 the path, and read_note reads them. Read them when the rules point to them or they hold settings you need \
@@ -49,6 +66,9 @@ not exist for you.
 # Vault rules
 {rules}
 
+# Memory (MEMORY.md)
+{memory}
+
 # Vault layout
 {layout}
 ",
@@ -56,6 +76,8 @@ not exist for you.
         today = chrono::Local::now().format("%Y-%m-%d (%A)"),
         surface = surface_text(surface),
         rules = rules(vault),
+        memory = memory(vault).unwrap_or_else(|| "(none yet)".into()),
+        limit = MEMORY_LIMIT,
     );
     if kind == Kind::Onboarding {
         prompt.push_str(ONBOARDING);
@@ -125,6 +147,7 @@ librarian rules, or Muninn should not follow theirs. If the user wants them, kee
 MUNINN.md; it wins where it disagrees with AGENTS.md. Otherwise everything stays in AGENTS.md.
 5. Ask whether saves should land directly or be reviewed first, and record the answer in MUNINN.md if it \
 exists, otherwise in AGENTS.md.
+6. Unless MEMORY.md has content, offer to start it with a few lines about the user and what they work on now.
 Keep messages short and ask one or two questions at a time. When everything is settled, say that onboarding \
 is done and that the user can now save to and ask the vault from anywhere.
 ";

@@ -19,7 +19,11 @@ const INSTRUCTIONS: &str = "Muninn is the librarian of the user's knowledge vaul
 `muninn` tool to save anything worth keeping, to ask about anything the user may have written down, or to \
 change notes. Describe what you want in plain language; Muninn already knows the vault's structure and rules \
 and decides where things go. Muninn may answer with a question or a change that needs approval: reply in the \
-same conversation by passing back its conversation_id.";
+same conversation by passing back its conversation_id. Ask Muninn to remember lasting facts about the user \
+(preferences, projects, decisions); it keeps the memory below up to date.";
+
+/// Claude Code keeps this many characters of a server's instructions.
+const INSTRUCTIONS_LIMIT: usize = 4096;
 
 const TOOL_DESCRIPTION: &str = "Talk to Muninn, the librarian of the user's knowledge vault. Send something \
 to save (include the content and any context that helps file it), a question about the user's notes, or a \
@@ -28,13 +32,28 @@ notes it used. It may ask you a question back or propose a change that needs you
 calling this tool again with the returned conversation_id. Whether you check with the user first is up to you.";
 
 pub async fn serve() -> Result<()> {
+    let paths = Paths::from_env();
     let info = ServerInfo {
         name: "muninn".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        instructions: Some(INSTRUCTIONS.into()),
+        instructions: Some(instructions(&paths)),
     };
-    let handler = Arc::new(MuninnTool { paths: Paths::from_env(), locks: Mutex::default() });
+    let handler = Arc::new(MuninnTool { paths, locks: Mutex::default() });
     muninn_mcp::serve_stdio(info, handler).await
+}
+
+/// The server instructions, with the vault's MEMORY.md so that agents know
+/// the user from the start of a session.
+fn instructions(paths: &Paths) -> String {
+    let memory = Settings::load(paths).ok().and_then(|s| s.open_vault().ok()).and_then(|v| muninn_core::memory(&v));
+    let Some(memory) = memory else { return INSTRUCTIONS.into() };
+    let text = format!("{INSTRUCTIONS}\n\n# What Muninn remembers about the user (MEMORY.md)\n{memory}");
+    if text.chars().count() <= INSTRUCTIONS_LIMIT {
+        return text;
+    }
+    let cut = "\n…(cut; ask Muninn for the rest)";
+    let keep: String = text.chars().take(INSTRUCTIONS_LIMIT - cut.chars().count()).collect();
+    keep + cut
 }
 
 struct MuninnTool {

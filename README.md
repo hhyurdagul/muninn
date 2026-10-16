@@ -9,6 +9,7 @@ muninn                      # TUI conversation in your vault (onboarding on firs
 muninn init                 # restart onboarding
 muninn ask "save: ravens remember faces"     # one prompt in, one result out
 echo "what did I decide about storage?" | muninn ask
+muninn memory               # print MEMORY.md, the short memory agents load at startup
 muninn log                  # changes Muninn made
 muninn undo [change-id]     # revert the latest (or a given) change
 muninn mcp                  # MCP server over stdio, started by your agent
@@ -27,6 +28,12 @@ Muninn reads, searches, and writes notes inside the vault only, never outside th
 ### Vault rules
 
 `AGENTS.md` at the vault root holds the rules every agent in the vault follows. If Muninn needs rules that other agents shouldn't follow (or the other way round), put those in `MUNINN.md` at the root. Muninn follows both, and `MUNINN.md` wins where they disagree. Onboarding asks whether you want the split. Muninn changes an existing `AGENTS.md` or root `MUNINN.md` only after review.
+
+### Memory
+
+`MEMORY.md` at the vault root is the short memory about you that every agent gets when it starts: who you are, what you're working on, standing preferences, and recent decisions. `muninn mcp` puts it in its MCP server instructions, so Claude Code and other MCP clients see it at the start of every session without calling a tool. Agents that don't read server instructions can load it with `muninn memory` from a session-start hook.
+
+Muninn keeps the file up to date: ask it to remember something, or let it notice when a save changes one of these facts. Every change to `MEMORY.md` goes through review, because a wrong line would mislead every agent that loads it. The file is capped at 3,000 characters so that it fits in the 4,096 characters Claude Code keeps of server instructions. Details belong in notes, which `MEMORY.md` links to.
 
 ### Hidden files and ignore patterns
 

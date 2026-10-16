@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use crate::conversation::{NoteEvent, NoteKind, Proposal};
 use crate::librarian::{Decision, Review};
-use crate::prompt::{MUNINN_RULES, SHARED_RULES};
+use crate::prompt::{MEMORY, MEMORY_LIMIT, MUNINN_RULES, SHARED_RULES};
 
 /// State shared by the tools during one turn.
 pub(crate) struct TurnContext {
@@ -225,7 +225,9 @@ impl Tool for VaultTool {
 impl VaultTool {
     /// Writes directly, or routes the change through review when asked to or
     /// when it touches an existing rules file (never edited unasked): any
-    /// AGENTS.md, or the MUNINN.md at the root (a `projects/muninn.md` is a note).
+    /// AGENTS.md, or the MUNINN.md at the root (a `projects/muninn.md` is a
+    /// note). MEMORY.md at the root, which every agent loads, is always
+    /// reviewed and kept under [`MEMORY_LIMIT`].
     async fn save(&self, path: &str, after: String, summary: &str, review: bool) -> Result<String> {
         let ctx = &self.ctx;
         let path = ctx.vault.relative(&ctx.vault.resolve(path)?);
@@ -236,7 +238,15 @@ impl VaultTool {
         let name = path.rsplit('/').next().unwrap_or_default();
         let is_rules =
             before.is_some() && (name.eq_ignore_ascii_case(SHARED_RULES) || path.eq_ignore_ascii_case(MUNINN_RULES));
-        if !review && !is_rules {
+        let is_memory = path.eq_ignore_ascii_case(MEMORY);
+        let length = after.chars().count();
+        if is_memory && length > MEMORY_LIMIT {
+            bail!(
+                "MEMORY.md would have {length} characters; keep it under {MEMORY_LIMIT} by merging or dropping \
+                 lines and moving details into notes"
+            );
+        }
+        if !review && !is_rules && !is_memory {
             return ctx.write(&path, after, summary);
         }
         let proposal = Proposal {
@@ -399,6 +409,18 @@ mod tests {
             assert!(out.contains("pending"), "{file}");
             assert_eq!(ctx.vault.read(file).unwrap().as_deref(), Some("rules\n"), "{file}");
         }
+    }
+
+    #[tokio::test]
+    async fn memory_is_always_reviewed_and_bounded() {
+        let (_d, ctx) = ctx(Review::Deferred, 1);
+        let write = tool(&ctx, "write_note");
+        let out = write.call(json!({"path": "MEMORY.md", "content": "- Uses Rust", "summary": "s"})).await.unwrap();
+        assert!(out.contains("pending"));
+        assert_eq!(ctx.vault.read("MEMORY.md").unwrap(), None);
+        let long = "x".repeat(MEMORY_LIMIT + 1);
+        let err = write.call(json!({"path": "MEMORY.md", "content": long, "summary": "s"})).await.unwrap_err();
+        assert!(err.to_string().contains("keep it under"));
     }
 
     #[tokio::test]
