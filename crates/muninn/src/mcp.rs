@@ -158,14 +158,8 @@ fn footer(conversation: &Conversation, notes: &[NoteEvent], reply: &str) -> Stri
     if !read.is_empty() {
         out.push_str(&format!("\nNotes read: {}", list(&read)));
     }
-    let mut searched: Vec<&str> = Vec::new();
-    for note in notes.iter().filter(|n| n.kind == NoteKind::Found) {
-        let path = note.path.as_str();
-        let cited = reply.contains(path) || reply.contains(path.trim_end_matches(".md"));
-        if cited && !read.contains(&path) && !searched.contains(&path) {
-            searched.push(path);
-        }
-    }
+    let unread = muninn_core::cited_unread(reply, notes);
+    let searched: Vec<&str> = unread.iter().map(String::as_str).collect();
     if !searched.is_empty() {
         out.push_str(&format!("\nCited from search matches only (not read in full): {}", list(&searched)));
     }

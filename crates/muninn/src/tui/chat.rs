@@ -157,6 +157,13 @@ impl Chat {
                 self.streaming = false;
                 self.log.push(tool(&name, &detail));
             }
+            AppEvent::Update(Update::Recheck(paths)) => {
+                self.streaming = false;
+                self.info(format!(
+                    "↻ cited {} without reading; checking again. This answer replaces the one above.",
+                    paths.join(", ")
+                ));
+            }
             AppEvent::Update(Update::Note(note)) => {
                 if note.kind == NoteKind::Changed {
                     let green = Style::default().fg(Color::Green);
@@ -446,6 +453,7 @@ impl Chat {
         for message in &conversation.messages {
             use muninn_core::Role;
             match message.role {
+                Role::User if muninn_core::is_automatic(message) => {}
                 Role::User => self.log.push(you(&message.content)),
                 Role::Assistant => {
                     if !message.content.trim().is_empty() {

@@ -96,9 +96,39 @@ impl Conversation {
         }
     }
 
+    /// User messages so far, not counting the ones Muninn sent itself.
     pub fn user_turns(&self) -> usize {
-        self.messages.iter().filter(|m| m.role == Role::User).count()
+        self.messages.iter().filter(|m| m.role == Role::User && !is_automatic(m)).count()
     }
+}
+
+/// Key in `Message::extra` that marks a user-role message Muninn sent on its
+/// own, such as a recheck request.
+const AUTOMATIC: &str = "muninn_automatic";
+
+/// A user-role message from Muninn itself, not from the user.
+pub(crate) fn automatic(text: String) -> Message {
+    let mut message = Message::user(text);
+    message.extra = serde_json::json!({ AUTOMATIC: true });
+    message
+}
+
+pub fn is_automatic(message: &Message) -> bool {
+    message.extra.get(AUTOMATIC).is_some()
+}
+
+/// Notes that `reply` names but the model saw only as search matches.
+pub fn cited_unread(reply: &str, notes: &[NoteEvent]) -> Vec<String> {
+    let read = |path: &str| notes.iter().any(|n| n.kind == NoteKind::Read && n.path == path);
+    let mut unread: Vec<String> = Vec::new();
+    for note in notes.iter().filter(|n| n.kind == NoteKind::Found) {
+        let path = note.path.as_str();
+        let cited = reply.contains(path) || reply.contains(path.trim_end_matches(".md"));
+        if cited && !read(path) && !unread.iter().any(|p| p == path) {
+            unread.push(path.to_string());
+        }
+    }
+    unread
 }
 
 /// Conversations as JSON files in one directory.
@@ -153,6 +183,13 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn messages_muninn_sends_itself_are_not_user_turns() {
+        let mut conversation = Conversation::new(Surface::Mcp, Kind::Chat, Path::new("/v"));
+        conversation.messages = vec![Message::user("hi"), automatic("recheck".into()), Message::user("again")];
+        assert_eq!(conversation.user_turns(), 2);
+    }
 
     #[test]
     fn store_lists_by_vault_newest_first_and_rejects_bad_ids() {

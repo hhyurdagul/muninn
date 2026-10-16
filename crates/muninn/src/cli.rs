@@ -45,6 +45,15 @@ pub async fn ask(words: Vec<String>) -> Result<i32> {
             }
             eprintln!("{DIM}· {name} {detail}{RESET}");
         }
+        Update::Recheck(paths) => {
+            if std::mem::take(&mut mid_line) {
+                println!();
+            }
+            eprintln!(
+                "{DIM}↻ cited {} without reading; checking again. The answer below replaces the one above.{RESET}",
+                paths.join(", ")
+            );
+        }
         Update::Note(note) if note.kind == NoteKind::Changed => {
             eprintln!("{DIM}✎ {} (undo: muninn undo {}){RESET}", note.path, note.id.unwrap_or_default());
         }

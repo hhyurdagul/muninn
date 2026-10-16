@@ -384,16 +384,36 @@ async fn mcp_failure_partway_reports_what_was_already_written() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn mcp_footer_names_notes_cited_from_search_matches_only() {
+async fn citing_a_search_match_triggers_one_recheck_and_the_corrected_answer_replaces_it() {
     let server = MockServer::scripted(vec![
         call("search_notes", json!({"query":"conversations"})),
-        Message::assistant("You store conversations as JSON (`projects/muninn.md`)."),
+        Message::assistant("You store conversations in SQLite (`projects/muninn.md`)."),
+        call("read_note", json!({"path":"projects/muninn.md"})),
+        Message::assistant("You store conversations as JSON files (`projects/muninn.md`)."),
     ])
     .await
     .unwrap();
     let env = Env::new(&server.url);
     let mut mcp = Mcp::start(&env).await;
     let (text, _) = mcp.say("How do I store conversations?", None).await;
+    assert!(text.starts_with("You store conversations as JSON files"), "{text}");
+    assert!(!text.contains("SQLite") && !text.contains("search matches only"), "{text}");
+    assert!(text.contains("Notes read: `projects/muninn.md`"), "{text}");
+    let (role, content) = last(&server.requests()[2]);
+    assert!(role == "user" && content.contains("Automatic check from Muninn"), "{content}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_footer_names_notes_still_cited_from_search_matches_after_the_recheck() {
+    let answer = Message::assistant("You store conversations as JSON (`projects/muninn.md`).");
+    let server =
+        MockServer::scripted(vec![call("search_notes", json!({"query":"conversations"})), answer.clone(), answer])
+            .await
+            .unwrap();
+    let env = Env::new(&server.url);
+    let mut mcp = Mcp::start(&env).await;
+    let (text, _) = mcp.say("How do I store conversations?", None).await;
+    assert_eq!(server.requests().len(), 3, "rechecks only once");
     assert!(text.contains("Cited from search matches only (not read in full): `projects/muninn.md`"), "{text}");
     assert!(!text.contains("Notes read"), "{text}");
 }

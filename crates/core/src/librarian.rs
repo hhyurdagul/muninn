@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::config::{Paths, Settings};
-use crate::conversation::{Conversation, NoteEvent, Proposal};
+use crate::conversation::{automatic, cited_unread, Conversation, NoteEvent, Proposal};
 use crate::prompt::system_prompt;
 use crate::tools::{toolset, TurnContext};
 
@@ -40,8 +40,15 @@ pub enum Review {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Update {
     Text(String),
-    Tool { name: String, detail: String },
+    Tool {
+        name: String,
+        detail: String,
+    },
     Note(NoteEvent),
+    /// The reply cited these notes from search matches alone, so the model
+    /// was asked to read them and answer again. The answer that follows
+    /// replaces the one before.
+    Recheck(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +60,10 @@ pub struct TurnResult {
     /// Every change still awaiting approval in the conversation.
     pub pending: Vec<Proposal>,
 }
+
+/// The most a request may hold, in characters (about 75k–100k tokens), so
+/// long conversations still fit models with a 128k-token context.
+const CONTEXT_CHARS: usize = 300_000;
 
 pub struct Librarian {
     provider: Arc<dyn Provider>,
@@ -112,21 +123,24 @@ impl Librarian {
             pending: Mutex::new(conversation.pending.clone()),
             notes: Mutex::new(Vec::new()),
         });
-        let agent = Agent::new(self.provider.clone(), toolset(ctx.clone()));
+        let agent = Agent::new(self.provider.clone(), toolset(ctx.clone())).max_context(CONTEXT_CHARS);
 
         let mut reported = 0;
-        let mut on_event = |event: Event| match event {
-            Event::Text(delta) => on_update(Update::Text(delta)),
-            Event::ToolStart { name, args } => on_update(Update::Tool { name, detail: tool_detail(&args) }),
-            Event::ToolEnd { .. } => {
-                let notes = ctx.notes.lock();
-                for note in &notes[reported..] {
-                    on_update(Update::Note(note.clone()));
-                }
-                reported = notes.len();
-            }
+        let mut outcome = {
+            let mut on_event = forward(&ctx, on_update, &mut reported);
+            agent.run(&system, &mut conversation.messages, Message::user(text), &mut on_event, cancel).await
         };
-        let outcome = agent.run(&system, &mut conversation.messages, Message::user(text), &mut on_event, cancel).await;
+        // Models cite notes they only saw as search matches even when told
+        // not to (F9), so ask once to read them and answer again.
+        let unread = match &outcome {
+            Ok(o) if o.stop == Stop::Done => cited_unread(&o.reply, &ctx.notes.lock()),
+            _ => Vec::new(),
+        };
+        if !unread.is_empty() {
+            on_update(Update::Recheck(unread.clone()));
+            let mut on_event = forward(&ctx, on_update, &mut reported);
+            outcome = agent.run(&system, &mut conversation.messages, recheck(&unread), &mut on_event, cancel).await;
+        }
 
         let notes = ctx.notes.lock().clone();
         conversation.pending = ctx.pending.lock().clone();
@@ -138,6 +152,34 @@ impl Librarian {
         let outcome = outcome?;
         Ok(TurnResult { reply: outcome.reply, stop: outcome.stop, notes, pending: conversation.pending.clone() })
     }
+}
+
+/// Forwards agent events as updates, adding the notes each tool touched.
+fn forward<'a>(
+    ctx: &'a TurnContext,
+    on_update: &'a mut (dyn FnMut(Update) + Send),
+    reported: &'a mut usize,
+) -> impl FnMut(Event) + Send + 'a {
+    move |event| match event {
+        Event::Text(delta) => on_update(Update::Text(delta)),
+        Event::ToolStart { name, args } => on_update(Update::Tool { name, detail: tool_detail(&args) }),
+        Event::ToolEnd { .. } => {
+            let notes = ctx.notes.lock();
+            for note in &notes[*reported..] {
+                on_update(Update::Note(note.clone()));
+            }
+            *reported = notes.len();
+        }
+    }
+}
+
+fn recheck(unread: &[String]) -> Message {
+    let list = unread.iter().map(|p| format!("`{p}`")).collect::<Vec<_>>().join(", ");
+    automatic(format!(
+        "(Automatic check from Muninn, not from the user.) Your answer cites {list}, but you saw only search-match \
+         lines from them. Read them with read_note now, then give your complete answer again, corrected if needed. \
+         The user sees only this new answer, so do not refer to the earlier one or to this check."
+    ))
 }
 
 /// One tiny completion to prove the endpoint, key, and model work.

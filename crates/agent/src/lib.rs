@@ -1,11 +1,12 @@
 //! A small tool-calling agent loop: ask the model, run the tools it calls,
 //! feed the results back, repeat until it answers without tools.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use muninn_ai::{Message, Provider, Request, ToolCall, ToolSpec};
+use muninn_ai::{Message, Provider, Request, Role, ToolCall, ToolSpec};
 use serde_json::Value;
 pub use tokio_util::sync::CancellationToken;
 
@@ -45,15 +46,23 @@ pub struct Agent {
     provider: Arc<dyn Provider>,
     tools: Vec<Arc<dyn Tool>>,
     max_steps: usize,
+    max_context: Option<usize>,
 }
 
 impl Agent {
     pub fn new(provider: Arc<dyn Provider>, tools: Vec<Arc<dyn Tool>>) -> Self {
-        Self { provider, tools, max_steps: 40 }
+        Self { provider, tools, max_steps: 40, max_context: None }
     }
 
     pub fn max_steps(mut self, steps: usize) -> Self {
         self.max_steps = steps;
+        self
+    }
+
+    /// Keeps each request, system prompt included, within about `chars`
+    /// characters (see [`fit`]). The history itself is never shortened.
+    pub fn max_context(mut self, chars: usize) -> Self {
+        self.max_context = Some(chars);
         self
     }
 
@@ -72,7 +81,11 @@ impl Agent {
         history.push(user);
         let mut reply = String::new();
         for _ in 0..self.max_steps {
-            let request = Request { system, messages: history, tools: &specs };
+            let messages = match self.max_context {
+                Some(chars) => fit(history, chars.saturating_sub(system.len())),
+                None => Cow::Borrowed(history.as_slice()),
+            };
+            let request = Request { system, messages: &messages, tools: &specs };
             let mut on_text = |delta: &str| on_event(Event::Text(delta.to_string()));
             let message = tokio::select! {
                 biased;
@@ -121,6 +134,42 @@ impl Agent {
         on_event(Event::ToolEnd { name: call.name.clone(), output, is_error });
         result
     }
+}
+
+/// Sent in place of a tool result from an earlier turn when the conversation
+/// outgrows the context budget.
+pub const OMITTED: &str = "[Earlier tool result omitted to fit the context window. Run the tool again if you need it.]";
+
+/// The part of `history` to send so it fits in `budget` characters. Tool
+/// results of earlier turns become [`OMITTED`] first; if that is not enough,
+/// the oldest turns are dropped. The current turn (from the last user message)
+/// is always sent whole, so the transcript stays valid.
+pub fn fit(history: &[Message], budget: usize) -> Cow<'_, [Message]> {
+    if history.iter().map(size).sum::<usize>() <= budget {
+        return Cow::Borrowed(history);
+    }
+    let current = history.iter().rposition(|m| m.role == Role::User).unwrap_or(0);
+    let mut messages = history.to_vec();
+    for m in &mut messages[..current] {
+        if m.role == Role::Tool && m.content.len() > OMITTED.len() {
+            m.content = OMITTED.into();
+        }
+    }
+    let mut total: usize = messages.iter().map(size).sum();
+    let mut start = 0;
+    while total > budget && start < current {
+        let next = (start + 1..current).find(|&i| messages[i].role == Role::User).unwrap_or(current);
+        total -= messages[start..next].iter().map(size).sum::<usize>();
+        start = next;
+    }
+    messages.drain(..start);
+    Cow::Owned(messages)
+}
+
+/// Rough size of a message on the wire, in characters.
+fn size(m: &Message) -> usize {
+    let extra = if m.extra.is_null() { 0 } else { m.extra.to_string().len() };
+    m.content.len() + m.tool_calls.iter().map(|c| c.arguments.len()).sum::<usize>() + extra
 }
 
 #[cfg(test)]
@@ -204,6 +253,27 @@ mod tests {
             agent.run("sys", &mut history, Message::user("hi"), &mut |_| {}, &CancellationToken::new()).await.unwrap();
         assert_eq!(outcome.stop, Stop::StepLimit);
         assert_eq!(history.last().unwrap().tool_call_id.as_deref(), Some("c0"));
+    }
+
+    #[test]
+    fn fits_long_conversations_by_omitting_old_results_then_dropping_old_turns() {
+        let big = "x".repeat(1000);
+        let turn = |q: &str| vec![Message::user(q), calls(&[("echo", "{}")]), Message::tool_result("c0", &big)];
+        let history: Vec<Message> = [turn("one"), turn("two"), turn("now")].concat();
+
+        assert!(matches!(fit(&history, 10_000), Cow::Borrowed(_)), "fits as is");
+
+        let sent = fit(&history, 1_500);
+        assert_eq!(sent.len(), history.len(), "old results omitted, no turn dropped");
+        assert_eq!((sent[2].content.as_str(), sent[5].content.as_str()), (OMITTED, OMITTED));
+        assert_eq!(sent[8].content, big, "the current turn is sent whole");
+
+        let sent = fit(&history, 1_150);
+        assert_eq!(sent[0].content, "two", "starts at a user message");
+        assert_eq!(sent.len(), 6);
+
+        let sent = fit(&history, 10);
+        assert_eq!((sent[0].content.as_str(), sent.len()), ("now", 3), "never cuts the current turn");
     }
 
     #[tokio::test]

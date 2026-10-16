@@ -9,7 +9,7 @@ mod provider;
 mod tools;
 
 pub use config::{Paths, Settings, DEFAULT_MODEL};
-pub use conversation::{Conversation, Kind, NoteEvent, NoteKind, Proposal, Store, Surface};
+pub use conversation::{cited_unread, is_automatic, Conversation, Kind, NoteEvent, NoteKind, Proposal, Store, Surface};
 pub use librarian::{check_model, tool_detail, Decision, Librarian, Review, Reviewer, TurnResult, Update};
 pub use muninn_agent::{CancellationToken, Stop};
 pub use prompt::{memory, MEMORY_LIMIT};
