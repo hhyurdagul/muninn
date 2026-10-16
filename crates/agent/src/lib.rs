@@ -164,6 +164,7 @@ mod tests {
                 id: format!("c{i}"),
                 name: name.to_string(),
                 arguments: args.to_string(),
+                ..Default::default()
             })
             .collect();
         m

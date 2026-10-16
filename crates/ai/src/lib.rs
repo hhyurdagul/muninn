@@ -1,4 +1,5 @@
-//! Provider-agnostic chat types and a streaming OpenAI-compatible client.
+//! Provider-agnostic chat types and streaming clients for OpenAI-compatible
+//! endpoints and Anthropic's Messages API.
 //!
 //! ```no_run
 //! # async fn demo() -> anyhow::Result<()> {
@@ -11,11 +12,13 @@
 //! # Ok(()) }
 //! ```
 
+mod anthropic;
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
 mod openai;
 mod sse;
 mod types;
 
+pub use anthropic::{Anthropic, ANTHROPIC_BASE_URL};
 pub use openai::OpenAiCompatible;
 pub use types::{Message, Provider, Request, Role, ToolCall, ToolSpec};

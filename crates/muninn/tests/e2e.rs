@@ -58,7 +58,12 @@ impl Env {
 
 fn call(name: &str, args: Value) -> Message {
     let mut message = Message::assistant("");
-    message.tool_calls = vec![ToolCall { id: format!("call-{name}"), name: name.into(), arguments: args.to_string() }];
+    message.tool_calls = vec![ToolCall {
+        id: format!("call-{name}"),
+        name: name.into(),
+        arguments: args.to_string(),
+        ..Default::default()
+    }];
     message
 }
 

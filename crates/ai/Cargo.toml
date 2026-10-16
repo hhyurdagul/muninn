@@ -1,6 +1,6 @@
 [package]
 name = "muninn-ai"
-description = "Minimal LLM provider API: chat messages, tool calls, streaming OpenAI-compatible client"
+description = "Minimal LLM provider API: chat messages, tool calls, streaming OpenAI-compatible and Anthropic clients"
 version.workspace = true
 edition.workspace = true
 

@@ -129,8 +129,12 @@ mod tests {
     #[tokio::test]
     async fn roundtrips_text_and_tool_calls_through_the_real_client() {
         let mut call = Message::assistant("Let me look… ğ");
-        call.tool_calls =
-            vec![ToolCall { id: "t1".into(), name: "read".into(), arguments: r#"{"path":"çay.md"}"#.into() }];
+        call.tool_calls = vec![ToolCall {
+            id: "t1".into(),
+            name: "read".into(),
+            arguments: r#"{"path":"çay.md"}"#.into(),
+            ..Default::default()
+        }];
         let server = MockServer::scripted(vec![call.clone()]).await.unwrap();
         let provider = OpenAiCompatible::new(&server.url, "key", "model");
         let messages = [Message::user("hi")];

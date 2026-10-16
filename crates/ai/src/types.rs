@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,6 +22,10 @@ pub struct Message {
     /// For `Role::Tool`: the call this message answers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Data a provider needs back unchanged on later requests, keyed by
+    /// provider (e.g. Anthropic's content blocks with their thinking).
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub extra: Value,
 }
 
 impl Message {
@@ -37,16 +42,20 @@ impl Message {
     }
 
     fn new(role: Role, content: String) -> Self {
-        Self { role, content, tool_calls: Vec::new(), tool_call_id: None }
+        Self { role, content, tool_calls: Vec::new(), tool_call_id: None, extra: Value::Null }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
     /// Raw JSON arguments as produced by the model (may be invalid JSON).
     pub arguments: String,
+    /// Provider data to send back with the call unchanged (e.g. Gemini's
+    /// thought signature in `extra_content`).
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub extra: Value,
 }
 
 /// A tool the model may call. `parameters` is a JSON Schema object.

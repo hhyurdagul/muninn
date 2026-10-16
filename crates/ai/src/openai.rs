@@ -7,7 +7,7 @@ use crate::sse::SseParser;
 use crate::types::{Message, Provider, Request, Role, ToolCall};
 
 /// Any `/chat/completions` endpoint that speaks the OpenAI wire format
-/// (OpenRouter, OpenAI, vLLM, Ollama, LM Studio, ...).
+/// (OpenRouter, OpenAI, Gemini, vLLM, Ollama, LM Studio, ...).
 pub struct OpenAiCompatible {
     http: reqwest::Client,
     base_url: String,
@@ -26,6 +26,18 @@ impl OpenAiCompatible {
             api_key: api_key.to_string(),
             model: model.to_string(),
         }
+    }
+
+    /// Ids of the models the endpoint offers, sorted.
+    pub async fn models(&self) -> Result<Vec<String>> {
+        let response = self
+            .http
+            .get(format!("{}/models", self.base_url))
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .with_context(|| format!("cannot reach {}", self.base_url))?;
+        model_ids(response).await
     }
 
     fn body(&self, request: &Request<'_>) -> Value {
@@ -63,11 +75,15 @@ fn wire_message(message: &Message) -> Value {
                     .tool_calls
                     .iter()
                     .map(|c| {
-                        json!({
+                        let mut call = json!({
                             "id": c.id,
                             "type": "function",
                             "function": { "name": c.name, "arguments": c.arguments },
-                        })
+                        });
+                        if !c.extra.is_null() {
+                            call["extra_content"] = c.extra.clone();
+                        }
+                        call
                     })
                     .collect();
             }
@@ -137,7 +153,7 @@ impl Accumulator {
         for call in delta.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
             let index = call.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
             while self.calls.len() <= index {
-                self.calls.push(ToolCall { id: String::new(), name: String::new(), arguments: String::new() });
+                self.calls.push(ToolCall::default());
             }
             let slot = &mut self.calls[index];
             if let Some(id) = call.get("id").and_then(Value::as_str) {
@@ -152,6 +168,9 @@ impl Accumulator {
             }
             if let Some(args) = call.pointer("/function/arguments").and_then(Value::as_str) {
                 slot.arguments.push_str(args);
+            }
+            if let Some(extra) = call.get("extra_content") {
+                slot.extra = extra.clone();
             }
         }
         match delta.get("content").and_then(Value::as_str) {
@@ -181,7 +200,27 @@ impl Accumulator {
     }
 }
 
-fn truncate(text: &str, max: usize) -> &str {
+/// Reads `{"data": [{"id": ...}]}`, the model list shape OpenAI and
+/// Anthropic share.
+pub(crate) async fn model_ids(response: reqwest::Response) -> Result<Vec<String>> {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        bail!("model list returned {status}: {}", truncate(&text, 500));
+    }
+    let body: Value = serde_json::from_str(&text).context("model list is not JSON")?;
+    let mut ids: Vec<String> = body["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|m| m["id"].as_str())
+        .map(|id| id.trim_start_matches("models/").to_string())
+        .collect();
+    ids.sort();
+    Ok(ids)
+}
+
+pub(crate) fn truncate(text: &str, max: usize) -> &str {
     match text.char_indices().nth(max) {
         Some((i, _)) => &text[..i],
         None => text,
@@ -209,6 +248,17 @@ mod tests {
         assert_eq!(message.tool_calls[0].arguments, "{\"path\":1}");
         assert_eq!(message.tool_calls[1].name, "search");
         assert_eq!(message.tool_calls[1].id, "call_1", "missing ids are synthesized");
+    }
+
+    #[test]
+    fn keeps_extra_content_of_tool_calls_for_the_next_request() {
+        let mut acc = Accumulator::default();
+        let signature = json!({"google":{"thought_signature":"sig"}});
+        acc.apply(&json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"read","arguments":"{}"},"extra_content":signature}]}}]}))
+            .unwrap();
+        let message = acc.finish().unwrap();
+        assert_eq!(message.tool_calls[0].extra, signature);
+        assert_eq!(wire_message(&message)["tool_calls"][0]["extra_content"], signature);
     }
 
     #[test]
