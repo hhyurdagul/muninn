@@ -4,6 +4,17 @@ Your knowledge vault, reachable from anywhere. Pin the vault once; then save to 
 
 ![Muninn answering from a demo vault, saving an idea, and showing the change log](assets/demo-tui.gif)
 
+## Install
+
+Muninn is pre-release. Until the first tagged release, build it from source:
+
+```sh
+nix profile install github:hhyurdagul/muninn                          # with Nix
+cargo install --locked --git https://github.com/hhyurdagul/muninn muninn   # with a stable Rust toolchain
+```
+
+Tagged releases will also ship prebuilt binaries for Linux (x86_64, arm64) and macOS (arm64, x86_64). Muninn talks to a model provider of your choice, so you need an API key; the default is `deepseek/deepseek-v4.1-flash` on [OpenRouter](https://openrouter.ai/keys).
+
 ## Use
 
 ```sh
@@ -87,6 +98,10 @@ Typing `/` opens the command list (↑↓ select, Tab complete, Enter run). Ente
 claude mcp add --scope user muninn -- muninn mcp
 codex mcp add muninn -- muninn mcp
 ```
+
+For omp, add `"muninn": {"type": "stdio", "command": "muninn", "args": ["mcp"]}` under `mcpServers` in `~/.omp/agent/mcp.json`.
+
+Codex asks before every MCP tool call, and `codex exec` refuses such calls outright. To let Codex call Muninn without asking, add `default_tools_approval_mode = "approve"` under `[mcp_servers.muninn]` in `~/.codex/config.toml`. Saves can then land in your vault without a prompt.
 
 ## Develop
 
