@@ -17,7 +17,7 @@ Muninn runs its own agent loop against OpenRouter (the default), Anthropic's Mes
 - **Use the flake for everything dev-related.** Run commands as `nix develop -c <cmd>`, or work inside `nix develop`. Add new tools to `devShells.default` in `flake.nix`, never to the host. Flakes only see files git tracks, so `git add` new files before running `nix build` or `nix develop`.
 - **Keep crates decoupled.** The library crates must stay usable outside Muninn (see the dependency rules below). Domain logic goes in `muninn-core`; UI and wiring go in the `muninn` binary.
 - **Write concise, readable code.** Prefer boring designs, use no speculative abstraction, and delete dead code. Use `anyhow` for errors and `parking_lot` locks in sync code; use `tokio::sync` when a guard is held across `.await`. rustfmt is set to `max_width = 120` (`rustfmt.toml`).
-- **Commit with git at every commitable step**, with a short imperative message. Commit only what the build, users, or contributors need: code, manifests, the flake, docs, and `assets/demo-tui.gif`. Stage files by name (no `git add -A` or `git add .`); screenshots, recordings, and personal notes stay out of git. **Never add commit attribution**: no `Co-Authored-By` and no "generated with" lines.
+- **Commit with git at every commitable step**, with a short imperative message. Commit only what the build, users, or contributors need: code, manifests, the flake, CI workflows, docs, and `assets/demo-tui.gif`. Stage files by name (no `git add -A` or `git add .`); screenshots, recordings, and personal notes stay out of git. **Never add commit attribution**: no `Co-Authored-By` and no "generated with" lines.
 - **Never point tests or smoke runs at a real vault.** Use temporary folders.
 
 ## Commands
@@ -28,6 +28,7 @@ nix develop -c cargo clippy --workspace --all-targets --all-features    # must b
 nix develop -c cargo fmt --all
 nix build                       # release binary at ./result/bin/muninn; runs the test suite too
 nix develop -c cargo run -p muninn-ai --features mock --example mock_server -- script.json 18431
+git tag v0.1.0 && git push origin v0.1.0                              # release: CI builds Linux and macOS binaries
 ```
 
 When `Cargo.lock` changes, `nix build` picks it up automatically through `cargoLock.lockFile`.
