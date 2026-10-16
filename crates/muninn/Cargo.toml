@@ -12,6 +12,7 @@ dirs.workspace = true
 muninn-core.workspace = true
 muninn-mcp.workspace = true
 muninn-tui.workspace = true
+unicode-width.workspace = true
 muninn-vault.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

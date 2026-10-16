@@ -2,6 +2,10 @@
 
 Your knowledge vault, reachable from anywhere. Pin the vault once; then save to it, ask it, or talk with it from any folder or any coding agent. The design is in [Muninn.md](Muninn.md).
 
+![Muninn answering from a demo vault, saving an idea, and showing the change log](assets/demo-tui.gif)
+
+*Demo vault and scripted model: re-record with `nix develop -c vhs demo/tui.tape`.*
+
 ## Use
 
 ```sh

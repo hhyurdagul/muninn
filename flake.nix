@@ -37,6 +37,7 @@
             rustfmt
             rust-analyzer
             tmux
+            vhs # terminal recordings for the README and posts (demo/*.tape)
           ];
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };

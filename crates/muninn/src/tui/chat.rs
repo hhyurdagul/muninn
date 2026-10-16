@@ -544,15 +544,17 @@ impl Chat {
     fn draw_header(&self, frame: &mut Frame, area: Rect) {
         let title = if self.title.is_empty() { "New conversation" } else { &self.title };
         let badge = Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD);
-        let left = Line::from(vec![
-            Span::styled(" Muninn ", badge),
-            Span::raw("  "),
-            Span::styled(title.to_string(), Style::default().add_modifier(Modifier::BOLD)),
-        ]);
         let right = Line::from(vec![
             Span::styled(tilde(self.librarian.vault().root()), Style::default().fg(Color::Cyan)),
             Span::styled("  ·  ", dim()),
             Span::styled(format!("{} ", self.model), dim()),
+        ]);
+        // The title gets what is left beside the badge and the right side.
+        let room = (area.width as usize).saturating_sub(right.width() + " Muninn ".len() + 4);
+        let left = Line::from(vec![
+            Span::styled(" Muninn ", badge),
+            Span::raw("  "),
+            Span::styled(fit(title, room), Style::default().add_modifier(Modifier::BOLD)),
         ]);
         frame.render_widget(Paragraph::new(left), area);
         frame.render_widget(Paragraph::new(right).alignment(Alignment::Right), area);
@@ -665,6 +667,24 @@ fn draw_approval(frame: &mut Frame, approval: &Approval) {
     ];
     lines.extend(diff_lines(&proposal.diff()));
     frame.render_widget(Paragraph::new(lines).block(block).scroll((approval.scroll, 0)), popup);
+}
+
+/// `text` cut to `width` columns, ending in `…` when cut.
+fn fit(text: &str, width: usize) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    if text.width() <= width {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        used += c.width().unwrap_or(0);
+        if used + 1 > width {
+            break;
+        }
+        out.push(c);
+    }
+    out + "…"
 }
 
 fn model_label(settings: &Settings) -> String {
