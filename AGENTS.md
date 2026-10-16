@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guide for agents (and humans) continuing work on Muninn. Read this first, then `Muninn.md` (the product spec, plus a dated progress log at the bottom) and `README.md` (usage).
+Guide for agents (and humans) continuing work on Muninn. Read this first, then `README.md` (usage).
 
 ## What this is
 
@@ -10,16 +10,15 @@ Muninn is a librarian agent for one pinned knowledge vault (a folder of Markdown
 - `muninn ask "…"` is a one-shot CLI command with no chat mode.
 - `muninn mcp` is an MCP server over stdio, used by coding agents. It exposes one tool, `muninn`, which takes a `message` and an optional `conversation_id`.
 
-Muninn runs its own agent loop against any OpenAI-compatible endpoint, with OpenRouter as the default. It never shells out.
+Muninn runs its own agent loop against OpenRouter (the default), Anthropic's Messages API, OpenAI, Gemini, or any OpenAI-compatible endpoint. It never shells out.
 
 ## Ground rules
 
 - **Use the flake for everything dev-related.** Run commands as `nix develop -c <cmd>`, or work inside `nix develop`. Add new tools to `devShells.default` in `flake.nix`, never to the host. Flakes only see files git tracks, so `git add` new files before running `nix build` or `nix develop`.
 - **Keep crates decoupled.** The library crates must stay usable outside Muninn (see the dependency rules below). Domain logic goes in `muninn-core`; UI and wiring go in the `muninn` binary.
 - **Write concise, readable code.** Prefer boring designs, use no speculative abstraction, and delete dead code. Use `anyhow` for errors and `parking_lot` locks in sync code; use `tokio::sync` when a guard is held across `.await`. rustfmt is set to `max_width = 120` (`rustfmt.toml`).
-- **Commit with git at every commitable step**, with a short imperative message. **Never add commit attribution**: no `Co-Authored-By` and no "generated with" lines.
-- **Keep the progress log current.** After meaningful work, append a dated entry (`### YYYY-MM-DD HH:MM — title`) under `## Progress` in `Muninn.md`: what was built, what was verified, what needs Hasan, and known limits.
-- **Treat Hasan's real vault (`~/HasanVault`) as read-only** unless he asks otherwise. Smoke-test against temporary folders.
+- **Commit with git at every commitable step**, with a short imperative message. Commit only what the build, users, or contributors need: code, manifests, the flake, docs, and `assets/demo-tui.gif`. Stage files by name (no `git add -A` or `git add .`); screenshots, recordings, and personal notes stay out of git. **Never add commit attribution**: no `Co-Authored-By` and no "generated with" lines.
+- **Never point tests or smoke runs at a real vault.** Use temporary folders.
 
 ## Commands
 
@@ -49,19 +48,19 @@ graph LR
 
 | Crate | Files | Responsibility | Must not know about |
 |---|---|---|---|
-| `muninn-ai` | `types.rs` (`Message`, `ToolCall`, `ToolSpec`, `Provider`), `openai.rs` (streaming client), `sse.rs`, `mock.rs` (feature `mock`) | LLM wire protocol | tools, vaults, Muninn |
+| `muninn-ai` | `types.rs` (`Message`, `ToolCall`, `ToolSpec`, `Provider`), `openai.rs` (OpenAI-format streaming client, model list), `anthropic.rs` (Messages API client, prompt caching), `sse.rs`, `mock.rs` (feature `mock`) | LLM wire protocol | tools, vaults, Muninn |
 | `muninn-agent` | `lib.rs` (`Agent`, `Tool`, `Event`, `Stop`) | tool-calling loop, cancellation, valid transcripts | vaults, UI |
 | `muninn-vault` | `lib.rs` (`Vault`), `journal.rs` (`Journal`, `Undo`, `unified_diff`) | sandboxed file access, change log, undo | AI, UI |
 | `muninn-mcp` | `lib.rs` (`Handler`, `serve`, `serve_stdio`) | MCP JSON-RPC (tools only) | Muninn |
 | `muninn-tui` | `input.rs`, `chat_log.rs`, `markdown.rs` (pulldown-cmark → styled lines), `diff.rs`, `picker.rs`, `terminal.rs`, `wrap.rs` | generic ratatui widgets | Muninn |
-| `muninn-core` | `config.rs` (`Settings`, `Paths`), `conversation.rs` (`Conversation`, `Store`, `Proposal`, `NoteEvent`), `tools.rs` (vault tools), `prompt.rs`, `librarian.rs` (`Librarian::turn`, `Review`, `Reviewer`, `Update`) | the librarian, independent of any UI | terminals, MCP |
-| `muninn` | `main.rs` (clap), `cli.rs`, `mcp.rs`, `integrations.rs`, `tui/{mod,chat,commands,setup}.rs` | surfaces and onboarding | — |
+| `muninn-core` | `config.rs` (`Settings`, `Paths`), `provider.rs` (`ProviderKind`, `connect`, `list_models`), `conversation.rs` (`Conversation`, `Store`, `Proposal`, `NoteEvent`), `tools.rs` (vault tools), `prompt.rs`, `librarian.rs` (`Librarian::turn`, `Review`, `Reviewer`, `Update`) | the librarian, independent of any UI | terminals, MCP |
+| `muninn` | `main.rs` (clap), `cli.rs`, `mcp.rs`, `integrations.rs`, `tui/{mod,chat,commands,model,setup}.rs` | surfaces and onboarding | — |
 
 ### One turn
 
 1. A surface builds a `Conversation` (`Surface::Cli|Mcp|Tui`, `Kind::Chat|Onboarding`). The TUI and MCP load existing conversations from `Store`.
 2. It calls `Librarian::turn(conv, text, review, on_update, cancel)`.
-3. `prompt::system_prompt` is rebuilt every turn. It contains the role text, the surface-specific review text, the current `AGENTS.md`, and the vault tree. For onboarding, it adds the onboarding section.
+3. `Librarian::turn` re-reads `ignore` from the settings file and applies it with `Vault::set_ignore`. Then `prompt::system_prompt` is rebuilt. It contains the role text, the surface-specific review text, the current `AGENTS.md` and root `MUNINN.md` (`MUNINN.md` wins on conflicts), and the vault tree without hidden entries. For onboarding, it adds the onboarding section.
 4. `tools::toolset` creates the tools over a shared `TurnContext` (vault, journal, review mode, pending proposals, note events). `Agent::run` loops until the model replies without calling any tools.
 5. The surface renders `Update`s (`Text`, `Tool`, `Note`) as they stream in. Afterwards it saves the conversation; the CLI does not save.
 
@@ -69,18 +68,21 @@ graph LR
 
 - `Paths::from_env` decides where files live. Settings are in `~/.config/muninn/config.toml`, with mode 0600 because the file holds the key; `MUNINN_CONFIG_DIR` overrides the location.
 - Conversations are in `~/.local/share/muninn/conversations/<id>.json` and the change log is in `changes.jsonl`; `MUNINN_DATA_DIR` overrides the location.
-- `MUNINN_API_KEY` overrides the stored key.
+- Keys are stored per provider (`api_keys`). `Settings::key_for` reads `MUNINN_API_KEY` first, then the stored key, then the provider's own variable (`ANTHROPIC_API_KEY`, …). Settings with the old single `api_key` migrate on load: the provider is taken from the endpoint, or `custom` for an unknown one.
 
 ## Invariants (do not break; tests cover most)
 
-- **Vault sandbox.** `Vault::resolve` rejects `..`, absolute paths outside the root, any hidden component (`.git`, `.obsidian`, …), and symlinks that lead outside the vault. All file access goes through `Vault`.
+- **Vault sandbox.** `Vault::resolve` rejects `..`, absolute paths outside the root, symlinks that lead outside the vault, and paths matching the `ignore` patterns (gitignore syntax, default `.git/`; checked on both the written path and the symlink target). All file access goes through `Vault`.
+- **Hidden entries are read-only.** Paths with a component starting with `.` can be read by path. Listings show them only with `hidden=true`, and a search walks into one only when it's the search root. `Vault::put` and `Vault::create_folder` refuse them, including through symlinks.
 - **Every note write goes through `Journal::apply`**, so it can be undone. `Journal::undo` reports `Conflict` instead of overwriting a note that was edited afterwards.
-- **Changes to an existing `AGENTS.md` always go through review**, whatever the model asks for (`VaultTool::save` in `core/src/tools.rs`).
+- **Changes to an existing rules file always go through review**, whatever the model asks for: any `AGENTS.md`, and the `MUNINN.md` at the vault root (`VaultTool::save` in `core/src/tools.rs`). A `muninn.md` in a subfolder is an ordinary note.
+- **`MEMORY.md` at the vault root is always reviewed**, including when it's created, and writes over `MEMORY_LIMIT` (3,000 characters) are refused. `muninn mcp` puts it into the MCP `instructions` (Claude Code cuts those at 4,096 characters), and `muninn memory` prints it for session-start hooks.
 - **Review modes.**
   - TUI and CLI use `Review::Interactive`: the tool waits while a `Reviewer` asks a human (a channel to the TUI dialog, or `/dev/tty` in the CLI).
   - MCP uses `Review::Deferred`: the proposal is stored on the conversation, and `apply_pending_change` refuses to run until a later user turn exists (`Proposal.user_turn`). The diff is appended to the MCP reply by `muninn/src/mcp.rs::render`.
+- **Provider data round-trips.** `Message::extra` and `ToolCall::extra` hold data a provider needs back unchanged: Anthropic's raw content blocks, including thinking signatures, and Gemini's `extra_content` thought signatures. The agent stores replies as they came, and providers ignore other providers' keys.
 - **Valid transcripts.** `Agent::run` answers every tool call, including on errors and cancellation. Tool errors go back to the model as `Error: …`.
-- **Rules live in the vault.** Muninn's settings hold only the vault path, endpoint, model, and key. Never store vault conventions in Muninn's settings.
+- **Rules live in the vault.** Muninn's settings hold only the vault path, provider, model, custom endpoint, keys, and the `ignore` patterns. `ignore` sets access limits, not conventions, and it must stay where the model can't edit it. Never store vault conventions in Muninn's settings; they go in `AGENTS.md`, or in `MUNINN.md` when they apply to Muninn alone.
 - **No shell.** If a vault rule needs a command, Muninn says so instead of running anything.
 
 ## Testing
@@ -107,11 +109,8 @@ graph LR
 
 ## Backlog / known gaps
 
-- Not yet verified with a real model:
-  - onboarding on `~/HasanVault`;
-  - answer quality and where saves land;
-  - registering with the real Claude Code, Codex, and omp configs.
+- Codex and omp registration haven't been tried yet.
 - Long conversations are never trimmed or summarized to fit the context window.
 - A TUI turn on a conversation started over MCP has no `apply_pending_change` (the review mode is interactive), so pending MCP proposals stay stuck there.
 - The CLI cannot confirm changes without a terminal (`/dev/tty`). In that case changes needing review are rejected.
-- Later items from the spec: structure presets, imports from other tools, and a calibration run before going live.
+- Later: structure presets, imports from other tools, and a calibration run before going live.

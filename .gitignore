@@ -1,2 +1,9 @@
 /target
 /result
+
+# Local only: never published
+/private/
+/demo/
+/assets/*
+!/assets/demo-tui.gif
+CLAUDE.local.md
