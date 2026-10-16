@@ -128,9 +128,31 @@ pub async fn model(provider: Option<String>, model: Option<String>, endpoint: Op
     if let Some(endpoint) = endpoint {
         settings.base_url = endpoint.trim_end_matches('/').to_string();
     }
+    let entered = if kind.needs_key() && settings.api_key().is_none() {
+        anyhow::ensure!(
+            std::io::stdin().is_terminal(),
+            "no API key for {}; set {} or run this in a terminal to enter one",
+            kind.name(),
+            kind.key_env().unwrap_or("MUNINN_API_KEY")
+        );
+        let hint = kind.key_url().map(|url| format!(" (get one at {url})")).unwrap_or_default();
+        let key = read_secret(&format!("{} API key{hint}: ", kind.name()))?;
+        anyhow::ensure!(!key.is_empty(), "no key entered; nothing changed");
+        settings.set_key(kind, &key);
+        Some(key)
+    } else {
+        None
+    };
     let Some(model) = model else {
         for id in list_models(&settings).await? {
             println!("{id}");
+        }
+        // The key works: keep it, without switching providers.
+        if let Some(key) = entered {
+            let mut stored = Settings::load(&paths)?;
+            stored.set_key(kind, &key);
+            stored.save(&paths)?;
+            eprintln!("Saved the {} key.", kind.name());
         }
         return Ok(0);
     };
@@ -139,6 +161,43 @@ pub async fn model(provider: Option<String>, model: Option<String>, endpoint: Op
     settings.save(&paths)?;
     println!("Now using {} · {}", kind.id(), settings.model);
     Ok(0)
+}
+
+/// Reads a line from the terminal without showing it.
+fn read_secret(prompt: &str) -> Result<String> {
+    use muninn_tui::ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+    use muninn_tui::ratatui::crossterm::terminal;
+
+    let mut tty = std::fs::OpenOptions::new().write(true).open("/dev/tty").context("no terminal")?;
+    write!(tty, "{prompt}")?;
+    tty.flush()?;
+    terminal::enable_raw_mode()?;
+    let mut secret = String::new();
+    let result = loop {
+        match event::read() {
+            Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Enter => break Ok(()),
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    break Err(anyhow::anyhow!("cancelled"))
+                }
+                KeyCode::Char(c) => {
+                    secret.push(c);
+                    let _ = write!(tty, "•");
+                }
+                KeyCode::Backspace if secret.pop().is_some() => {
+                    let _ = write!(tty, "\x08 \x08");
+                }
+                _ => {}
+            },
+            Ok(Event::Paste(text)) => secret.push_str(&text),
+            Ok(_) => {}
+            Err(e) => break Err(e.into()),
+        }
+        let _ = tty.flush();
+    };
+    terminal::disable_raw_mode()?;
+    writeln!(tty, "\r")?;
+    result.map(|()| secret.trim().to_string())
 }
 
 /// Prints MEMORY.md (nothing when it is empty), e.g. for a session-start hook.

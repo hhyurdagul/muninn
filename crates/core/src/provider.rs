@@ -70,6 +70,17 @@ impl ProviderKind {
         }
     }
 
+    /// Where to create a key.
+    pub fn key_url(self) -> Option<&'static str> {
+        match self {
+            Self::OpenRouter => Some("https://openrouter.ai/keys"),
+            Self::OpenAi => Some("https://platform.openai.com/api-keys"),
+            Self::Gemini => Some("https://aistudio.google.com/apikey"),
+            Self::Anthropic => Some("https://console.anthropic.com/settings/keys"),
+            Self::Custom => None,
+        }
+    }
+
     /// Whether requests need a key (local endpoints usually don't).
     pub fn needs_key(self) -> bool {
         self != Self::Custom
@@ -104,7 +115,11 @@ pub fn connect(settings: &Settings) -> Result<Arc<dyn Provider>> {
 /// The models the configured provider offers (the model field is ignored).
 pub async fn list_models(settings: &Settings) -> Result<Vec<String>> {
     let endpoint = settings.endpoint();
-    let key = settings.api_key().unwrap_or_default();
+    let key = match settings.api_key() {
+        Some(key) => key,
+        None if settings.provider.needs_key() => anyhow::bail!("no API key for {}", settings.provider.name()),
+        None => String::new(),
+    };
     let models = match settings.provider {
         ProviderKind::Anthropic => Anthropic::new(endpoint, &key, "").models().await,
         _ => OpenAiCompatible::new(endpoint, &key, "").models().await,

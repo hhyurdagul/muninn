@@ -191,12 +191,15 @@ impl ModelChoice {
     }
 
     fn go(&mut self, stage: Stage) {
-        if stage == Stage::Key {
-            let stored = self.settings.api_keys.get(self.settings.provider.id()).cloned().unwrap_or_default();
-            self.key.set_text(stored);
-        }
         self.stage = stage;
         self.message = None;
+        if stage == Stage::Key {
+            let provider = self.settings.provider;
+            self.key.set_text(self.settings.api_keys.get(provider.id()).cloned().unwrap_or_default());
+            if let Some(url) = provider.key_url() {
+                self.message = Some((format!("Get a key at {url}"), false));
+            }
+        }
     }
 
     fn fetch(&mut self, tx: &Tx) {
